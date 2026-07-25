@@ -17,6 +17,7 @@ import com.mentalfrostbyte.jello.module.settings.impl.NumberSetting;
 import com.mentalfrostbyte.jello.util.game.player.MovementUtil;
 import com.mentalfrostbyte.jello.util.game.player.constructor.Rotation;
 import com.mentalfrostbyte.jello.util.game.player.rotation.util.RotationUtils;
+import com.mentalfrostbyte.jello.util.game.world.blocks.BlockUtil;
 import net.minecraft.block.AirBlock;
 import net.minecraft.block.AnvilBlock;
 import net.minecraft.block.Block;
@@ -125,6 +126,7 @@ public class BlockFlyCustomMode extends Module {
     private final BooleanSetting sneak;
     private final BooleanSetting advancedBlockSearch;
     private final BooleanSetting grim1_17rot;
+    private final BooleanSetting duplicateRotPlace;
     private final BooleanSetting snap;
     private final BooleanSetting hideSnap;
     private final BooleanSetting renderItemSpoof;
@@ -145,6 +147,7 @@ public class BlockFlyCustomMode extends Module {
         this.registerSetting(this.sneak = new BooleanSetting("Sneak", "Pulse sneak periodically while scaffolding.", true));
         this.registerSetting(this.advancedBlockSearch = new BooleanSetting("Advanced Block Search", "Search yaw/pitch offsets when the direct scaffold ray misses.", true));
         this.registerSetting(this.grim1_17rot = new BooleanSetting("Grim1.17Rot","send rotpacket norot",false));
+        this.registerSetting(this.duplicateRotPlace = new BooleanSetting("DuplicateRotPlace","Dis Grim DuplicateRotPlace VL",true));
         this.registerSetting(this.snap = new BooleanSetting("Snap", "Snap yaw on Normal placements.", true) {
             @Override
             public boolean isHidden() {
@@ -288,7 +291,11 @@ public class BlockFlyCustomMode extends Module {
             if (this.isNormalMode() && this.snap.getCurrentValue()) {
                 this.rots.yaw = this.correctRotation.yaw;
             } else {
-                this.rots.yaw = RotationUtils.updateRotation(this.rots.yaw, this.correctRotation.yaw, 75.0F);
+                if (duplicateRotPlace.getCurrentValue()) {
+                    this.rots.yaw = RotationUtils.updateRotation(this.rots.yaw, this.correctRotation.yaw, 75.0F - RandomUtils.nextFloat(0.0F, 6.0F));
+                } else {
+                    this.rots.yaw = RotationUtils.updateRotation(this.rots.yaw, this.correctRotation.yaw, 75.0F);
+                }
             }
 
             this.rots.pitch = this.correctRotation.pitch;
@@ -414,7 +421,9 @@ public class BlockFlyCustomMode extends Module {
     private Rotation getPlayerYawRotation() {
         float rotationYaw = mc.player.rotationYaw - 180.0F;
         if (this.isTower()) {
-            return new Rotation(rotationYaw, 90.0F);
+            // 加一点每 tick 抖动，避免 tower 时恒定旋转包让连续放置的 yaw 增量 bit 级相同（Grim DuplicateRotPlace）
+            float jitter = duplicateRotPlace.getCurrentValue() ? RandomUtils.nextFloat(0.0F, 0.5F) - 0.25F : 0.0F;
+            return new Rotation(rotationYaw + jitter, 90.0F);
         }
 
         float pitch = 82.0F;
@@ -607,7 +616,8 @@ public class BlockFlyCustomMode extends Module {
                 && !mc.gameSettings.keyBindForward.isKeyDown()
                 && !mc.gameSettings.keyBindBack.isKeyDown()
                 && !mc.gameSettings.keyBindLeft.isKeyDown()
-                && !mc.gameSettings.keyBindRight.isKeyDown();
+                && !mc.gameSettings.keyBindRight.isKeyDown()
+                && !(BlockUtil.getBlockFromPosition(new BlockPos(mc.player.getPosX(), mc.player.getPosY() - 1.5, mc.player.getPosZ())) instanceof AirBlock);
     }
 
     private double getBlockDistance(Vector3d vec3) {
