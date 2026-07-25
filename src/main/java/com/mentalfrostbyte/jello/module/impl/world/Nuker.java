@@ -60,15 +60,7 @@ public class Nuker extends Module {
             } else if (mc.playerController.getCurrentGameType() != GameType.CREATIVE) {
                 if (this.targetPos != null) {
                     if (mc.world.getBlockState(this.targetPos).isAir()
-                            || Math.sqrt(
-                            mc.player
-                                    .getDistanceSq(
-                                            (double) this.targetPos.getX() + 0.5,
-                                            (double) this.targetPos.getY() + 0.5,
-                                            (double) this.targetPos.getZ() + 0.5
-                                    )
-                    )
-                            > (double) range) {
+                            || eyeDistanceTo(this.targetPos) > (double) range) {
                         this.targetPos = this.blocksToDestroy.get(0);
                     }
 
@@ -142,6 +134,13 @@ public class Nuker extends Module {
         }
     }
 
+    private static double eyeDistanceTo(BlockPos pos) {
+        double dx = mc.player.getPosX() - ((double) pos.getX() + 0.5);
+        double dy = mc.player.getPosYEye() - ((double) pos.getY() + 0.5);
+        double dz = mc.player.getPosZ() - ((double) pos.getZ() + 0.5);
+        return Math.sqrt(dx * dx + dy * dy + dz * dz);
+    }
+
     public boolean isReplaceable(BlockPos pos) {
         Block block = mc.world.getBlockState(pos).getBlock();
         return mc.world.getBlockState(pos).getMaterial().isReplaceable() || block instanceof BushBlock;
@@ -160,10 +159,7 @@ public class Nuker extends Module {
                     );
                     if (!mc.world.getBlockState(pos).isAir()
                             && mc.world.getBlockState(pos).getFluidState().isEmpty()
-                            && Math.sqrt(
-                            mc.player.getDistanceSq((double) pos.getX() + 0.5, (double) pos.getY() + 0.5, (double) pos.getZ() + 0.5)
-                    )
-                            < (double) range) {
+                            && eyeDistanceTo(pos) < (double) range) {
                         String mode = this.getStringSettingValueByName("Mode");
                         switch (mode) {
                             case "One hit":
