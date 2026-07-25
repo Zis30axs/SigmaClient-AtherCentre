@@ -95,20 +95,21 @@ public class ChestStealer extends Module {
                 for (Entry var6 : this.chests.entrySet()) {
                     ChestTileEntity var7 = (ChestTileEntity) var6.getKey();
                     boolean var8 = (Boolean) var6.getValue();
-                    float var9 = (float) var7.getPos().getX();
-                    float var10 = (float) var7.getPos().getY() + 0.1F;
-                    float var11 = (float) var7.getPos().getZ();
+                    float var9 = (float) var7.getPos().getX() + 0.5F;
+                    float var10 = (float) var7.getPos().getY() + 0.5F;
+                    float var11 = (float) var7.getPos().getZ() + 0.5F;
                     if (!this.field23621
                             && (
                             this.targetChest == null
-                                    || mc.player.getDistanceSq(var9, var10, var11)
-                                    > mc.player.getDistanceSq(var9, var10, var11)
+                                    || this.eyeDistSq(var9, var10, var11)
+                                    < this.eyeDistSq(this.targetChest.getPos().getX() + 0.5F, this.targetChest.getPos().getY() + 0.5F, this.targetChest.getPos().getZ() + 0.5F)
                     )
                             && !var8
-                            && Math.sqrt(mc.player.getDistanceSq(var9, var10, var11)) < 5.0
+                            && this.eyeDistSq(var9, var10, var11) < 25.0
                             && this.field23624.getElapsedTime() > 1000L
                             && mc.currentScreen == null) {
-                        float[] var16 = RotationUtil.rotationToPos((double) var7.getPos().getX() + 0.5,  (double) var7.getPos().getY() + 0.5, (double) var7.getPos().getZ() + 0.5);
+                        float[] var16 = BlockUtil.getBlockBestRotation(var7.getPos());
+                        //float[] var16 = RotationUtil.rotationToPos((double) var7.getPos().getX() + 0.5,  (double) var7.getPos().getY() + 0.5, (double) var7.getPos().getZ() + 0.5);
                         BlockRayTraceResult var12 = BlockUtil.rayTraceBlock(var16[0], var16[1], 0.0F, var7.getPos(), this.getBooleanValueFromSettingName("Through Walls"));
                         if (var12.getType() != net.minecraft.util.math.RayTraceResult.Type.MISS
                                 && var12.getPos().getX() == var7.getPos().getX()
@@ -366,6 +367,13 @@ public class ChestStealer extends Module {
 
         // 如果物品名称包含"seed"，则视为垃圾物品
         return junkItems.contains(item) || item.getName().getString().toLowerCase().contains("seed");
+    }
+
+    private double eyeDistSq(double x, double y, double z) {
+        double dx = mc.player.getPosX() - x;
+        double dy = mc.player.getPosYEye() - y;
+        double dz = mc.player.getPosZ() - z;
+        return dx * dx + dy * dy + dz * dz;
     }
 
     private void method16370() {

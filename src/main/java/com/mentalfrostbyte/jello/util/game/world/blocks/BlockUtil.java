@@ -3,6 +3,7 @@ package com.mentalfrostbyte.jello.util.game.world.blocks;
 import com.google.common.collect.ImmutableList;
 import com.mentalfrostbyte.jello.event.impl.player.movement.EventMotion;
 import com.mentalfrostbyte.jello.util.game.player.MovementUtil;
+import com.mentalfrostbyte.jello.util.game.player.combat.RotationUtil;
 import com.mentalfrostbyte.jello.util.game.world.pathing.BlockCache;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
@@ -513,6 +514,17 @@ public class BlockUtil {
         };
     }
 
+    /**
+     * 瞄方块包围盒上离眼睛最近的点（最近表面），而不是几何中心：距离更短、贴合手动瞄准的面
+     * 直接返回方块最近点转头
+     */
+    public static float[] getBlockBestRotation(BlockPos pos) {
+        AxisAlignedBB box = mc.world.getBlockState(pos).getCollisionShape(mc.world, pos).getBoundingBox().offset(pos);
+        double ex = net.minecraft.util.math.MathHelper.clamp(mc.player.getPosX(), box.minX, box.maxX);
+        double ey = net.minecraft.util.math.MathHelper.clamp(mc.player.getPosYEye(), box.minY, box.maxY);
+        double ez = net.minecraft.util.math.MathHelper.clamp(mc.player.getPosZ(), box.minZ, box.maxZ);
+        return RotationUtil.rotationToPos(ex, ey, ez);
+    }
 
     public static RayTraceResult rayTraceWithOffset(float yaw, float pitch, float reach, float sideOffset) {
         double offsetX = Math.cos((double) MovementUtil.getYaw() * Math.PI / 180.0) * (double) sideOffset;

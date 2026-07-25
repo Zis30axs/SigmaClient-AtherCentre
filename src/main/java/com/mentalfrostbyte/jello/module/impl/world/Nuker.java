@@ -64,21 +64,18 @@ public class Nuker extends Module {
                         this.targetPos = this.blocksToDestroy.get(0);
                     }
 
-                    float[] rotations = RotationUtil.rotationToPos(
-							this.targetPos.getX()+ 0.5, this.targetPos.getY()+ 0.5,this.targetPos.getZ()+ 0.5
-                    );
+                    float[] rotations = BlockUtil.getBlockBestRotation(targetPos);
                     RotationManager.setRotations(rotations[0],rotations[1]);
                     EventKeyPress keyPress = new EventKeyPress(0, false, this.targetPos);
                     EventBus.call(keyPress);
                 } else {
                     this.targetPos = this.blocksToDestroy.get(0);
-                    float[] var6 = RotationUtil.rotationToPos(
-                            (double) this.targetPos.getX() + 0.5, (double) this.targetPos.getY() + 0.5, this.targetPos.getZ() + 0.5
-                    );
+                    float[] var6 = BlockUtil.getBlockBestRotation(targetPos);
                     RotationManager.setRotations(var6[0],var6[1]);
                     EventKeyPress keyPress = new EventKeyPress(0, false, this.targetPos);
                     EventBus.call(keyPress);
                 }
+
                 if (this.getBooleanValueFromSettingName("RayTrace")) {
                     BlockRayTraceResult raytrace = BlockUtil.rayTraceBlock(RotationCore.lastYaw, RotationCore.lastPitch, 0.0F, targetPos, true);
                     if (raytrace.getType() != net.minecraft.util.math.RayTraceResult.Type.MISS && raytrace.getPos() == targetPos) {
