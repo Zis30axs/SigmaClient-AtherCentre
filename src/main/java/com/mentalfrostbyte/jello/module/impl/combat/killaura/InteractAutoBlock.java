@@ -268,7 +268,7 @@ public class InteractAutoBlock {
             Entity entity = targetData.getEntity();
             if (entity == this.mc.player || entity == Blink.clientPlayerEntity) {
                 iterator.remove();
-            } else if (mc.player.getDistance(entity) > range) {
+            } else if (mc.player.getDistanceToEntityBox(entity) > range) {
                 iterator.remove();
             } else if (Client.getInstance().friendManager.isFriendPure(entity)) {
                 iterator.remove();

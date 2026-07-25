@@ -77,7 +77,6 @@ public class MusicPlayer extends AnimatedIconPanel {
     public ClickGuiScreen parent;
 
     private static synchronized void ensureBaseVideoSources() {
-        addVideoSourceIfMissing(new Thumbnails("Bundled Music", "bundled_music", YoutubeContentType.BUNDLED));
         addVideoSourceIfMissing(new Thumbnails("Local Music", "local_music", YoutubeContentType.LOCAL));
         addVideoSourceIfMissing(new Thumbnails("\u7f51\u6613\u4e91\u70ed\u6b4c", "netease_hot", YoutubeContentType.NETEASE));
         addVideoSourceIfMissing(new Thumbnails("\u7f51\u6613\u4e91\u65b0\u6b4c", "netease_new", YoutubeContentType.NETEASE));

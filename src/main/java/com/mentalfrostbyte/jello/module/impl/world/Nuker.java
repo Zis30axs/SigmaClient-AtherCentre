@@ -36,9 +36,10 @@ public class Nuker extends Module {
 
     public Nuker() {
         super(ModuleCategory.WORLD, "Nuker", "Destroys blocks around you");
-        this.registerSetting(new NumberSetting<>("Range", "Range value for nuker", 6.0F, 2.0F, 10.0F, 1.0F));
+        this.registerSetting(new NumberSetting<>("Range", "Range value for nuker", 6.0F, 2.0F, 8.0F, 0.5F));
         this.registerSetting(new ModeSetting("Mode", "Mode", 0, "All", "One hit", "Bed", "Egg"));
         this.registerSetting(new BooleanSetting("NoSwing", "Removes the swing animation.", false));
+        this.registerSetting(new BooleanSetting("RayTrace","",false));
         this.registerSetting(new BooleanListSetting("Blocks", "Blocks to destroy", true));
         this.registerSetting(new ColorSetting("Color", "The rendered block color", ClientColors.MID_GREY.getColor(), true));
     }
@@ -52,7 +53,8 @@ public class Nuker extends Module {
     @EventTarget
     public void onUpdate(EventUpdate event) {
         if (this.isEnabled()) {
-            this.blocksToDestroy = this.getBlocksToDestroy(this.getNumberValueBySettingName("Range") / 2.0F);
+            float range = this.getNumberValueBySettingName("Range");
+            this.blocksToDestroy = this.getBlocksToDestroy(range);
             if (this.blocksToDestroy.isEmpty()) {
                 this.targetPos = null;
             } else if (mc.playerController.getCurrentGameType() != GameType.CREATIVE) {
@@ -66,7 +68,7 @@ public class Nuker extends Module {
                                             (double) this.targetPos.getZ() + 0.5
                                     )
                     )
-                            > 6.0) {
+                            > (double) range) {
                         this.targetPos = this.blocksToDestroy.get(0);
                     }
 
@@ -85,8 +87,17 @@ public class Nuker extends Module {
                     EventKeyPress keyPress = new EventKeyPress(0, false, this.targetPos);
                     EventBus.call(keyPress);
                 }
-                BlockRayTraceResult raytrace = BlockUtil.rayTraceBlock(RotationCore.lastYaw,RotationCore.lastPitch,0.0F,targetPos,true);
-                if (raytrace.getType() != net.minecraft.util.math.RayTraceResult.Type.MISS && raytrace.getPos() == targetPos) {
+                if (this.getBooleanValueFromSettingName("RayTrace")) {
+                    BlockRayTraceResult raytrace = BlockUtil.rayTraceBlock(RotationCore.lastYaw, RotationCore.lastPitch, 0.0F, targetPos, true);
+                    if (raytrace.getType() != net.minecraft.util.math.RayTraceResult.Type.MISS && raytrace.getPos() == targetPos) {
+                        mc.playerController.onPlayerDamageBlock(this.targetPos, BlockUtil.getBestFacingDirection(this.targetPos));
+                        if (!this.getBooleanValueFromSettingName("NoSwing")) {
+                            mc.player.swingArm(Hand.MAIN_HAND);
+                        } else {
+                            mc.getConnection().sendPacket(new CAnimateHandPacket(Hand.MAIN_HAND));
+                        }
+                    }
+                } else {
                     mc.playerController.onPlayerDamageBlock(this.targetPos, BlockUtil.getBestFacingDirection(this.targetPos));
                     if (!this.getBooleanValueFromSettingName("NoSwing")) {
                         mc.player.swingArm(Hand.MAIN_HAND);

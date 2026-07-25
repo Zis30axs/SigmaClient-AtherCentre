@@ -541,7 +541,7 @@ public class KillAura extends Module {
     private Entity getClosestTargetInBlockRange(List<TimedEntity> var1) {
         var1 = autoBlock.sortTargets(var1);
         return !var1.isEmpty()
-                && var1.get(0).getEntity().getDistance(mc.player) <= this.getNumberValueBySettingName("Range")
+                && mc.player.getDistanceToEntityBox(var1.get(0).getEntity()) <= this.getNumberValueBySettingName("Range")
                         ? var1.get(0).getEntity()
                         : null;
     }
