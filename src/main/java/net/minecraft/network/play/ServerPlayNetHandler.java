@@ -1,6 +1,5 @@
 package net.minecraft.network.play;
 
-import com.elfmcys.yesstevemodel.network.OpenYsmNetwork;
 import com.google.common.collect.Lists;
 import com.google.common.primitives.Doubles;
 import com.google.common.primitives.Floats;
@@ -1311,7 +1310,6 @@ public class ServerPlayNetHandler implements IServerPlayNetHandler
         this.server.refreshStatusNextTick();
         this.server.getPlayerList().func_232641_a_((new TranslationTextComponent("multiplayer.player.left", this.player.getDisplayName())).mergeStyle(TextFormatting.YELLOW), ChatType.SYSTEM, Util.DUMMY_UUID);
         this.player.disconnect();
-        OpenYsmNetwork.forgetServerPlayer(this.player);
         this.server.getPlayerList().playerLoggedOut(this.player);
         IChatFilter ichatfilter = this.player.func_244529_Q();
 
@@ -1883,10 +1881,6 @@ public class ServerPlayNetHandler implements IServerPlayNetHandler
     public void processCustomPayload(CCustomPayloadPacket packetIn)
     {
         PacketThreadUtil.checkThreadAndEnqueue(packetIn, this, this.player.getServerWorld());
-        if (OpenYsmNetwork.handleServerPayload(packetIn, this.player))
-        {
-            return;
-        }
     }
 
     public void func_217263_a(CSetDifficultyPacket p_217263_1_)

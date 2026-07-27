@@ -44,6 +44,12 @@ public abstract class ProjectileItemEntity extends ThrowableEntity implements IR
 
     protected abstract Item getDefaultItem();
 
+    /** YSM: replaces upstream's ThrowableItemProjectileAccessor mixin invoker. */
+    public Item invokeGetDefaultItem()
+    {
+        return this.getDefaultItem();
+    }
+
     protected ItemStack func_213882_k()
     {
         return this.getDataManager().get(ITEMSTACK_DATA);

@@ -103,7 +103,7 @@ public class YSMBinaryDeserializer implements AutoCloseable{
             int unknownPadding = reader.readVarInt();
             if (unknownPadding != 1) throw new RuntimeException("Expected 1");
             RawYsmModel.RawAnimationFile rawAnimationFile = parseAnimations();
-            model.mainEntity.animationFiles.put(YSMFolderDeserializer.getAnimKeyFromType(animationId), rawAnimationFile);
+            putLegacyAnimationBlob(animationId, rawAnimationFile);
             rawAnimationFile.animType = animationId;
             tempAnims.put(animationId, rawAnimationFile);
         }
@@ -177,7 +177,7 @@ public class YSMBinaryDeserializer implements AutoCloseable{
             int unknownPadding = reader.readVarInt();
             if (unknownPadding != 1) throw new RuntimeException("Expected 1");
             RawYsmModel.RawAnimationFile rawAnimationFile = parseAnimations();
-            model.mainEntity.animationFiles.put(YSMFolderDeserializer.getAnimKeyFromType(animationId), rawAnimationFile);
+            putLegacyAnimationBlob(animationId, rawAnimationFile);
             rawAnimationFile.animType = animationId;
             tempAnims.put(animationId, rawAnimationFile);
         }
@@ -895,6 +895,37 @@ public class YSMBinaryDeserializer implements AutoCloseable{
     private float[] readVector3D() {
         return new float[]{reader.readFloat(), reader.readFloat(), reader.readFloat()};
     }
+
+    /**
+     * Routes a legacy-format animation blob to the entity it belongs to.
+     *
+     * <p>The legacy V1/V15 layouts store the arrow projectile's animation blob (animationId 5)
+     * inline with the player's, and upstream drops all of them into {@code mainEntity} unfiltered.
+     * {@code ModelAssemblyFactory.buildPlayerModelBundle} then flattens every main-entity role into
+     * one player animation map in insertion order with the arrow blob LAST, so the arrow's own
+     * {@code parallel0..7} entries silently overwrite the player's. That is how a legacy model loses
+     * its real {@code parallel0} (root scale, locator hiding, hair sway, eye/head tracking) and ends
+     * up with eight empty parallel slots, i.e. zero {@code player.parallel_*} controllers.
+     *
+     * <p>This mirrors the existing arrow-texture special case a few lines below and restores the
+     * semantics of both the folder path (YSMFolderDeserializer puts the arrow animation under
+     * {@code files.projectiles[]}) and the modern binary path (sub-entities own their animation
+     * files). Deliberate deviation from the decompiled upstream source.
+     */
+    private void putLegacyAnimationBlob(int animationId, RawYsmModel.RawAnimationFile rawAnimationFile) {
+        String key = YSMFolderDeserializer.getAnimKeyFromType(animationId);
+        if (animationId == ARROW_ANIM_TYPE) {
+            RawYsmModel.RawSubEntity arrow = model.projectiles.get("minecraft:arrow");
+            if (arrow != null) {
+                arrow.animationFiles.put(key, rawAnimationFile);
+                return;
+            }
+        }
+        model.mainEntity.animationFiles.put(key, rawAnimationFile);
+    }
+
+    /** {@code YSMFolderDeserializer.getAnimTypeFromKey("arrow")}. */
+    private static final int ARROW_ANIM_TYPE = 5;
 
     private void assignMainModels(List<RawYsmModel.RawGeometry> tempMainModels) {
         for (RawYsmModel.RawGeometry tempMainModel : tempMainModels) {

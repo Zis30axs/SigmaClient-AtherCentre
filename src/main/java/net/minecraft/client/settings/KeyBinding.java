@@ -26,6 +26,9 @@ public class KeyBinding implements Comparable<KeyBinding>
         p_205215_0_.put("key.categories.multiplayer", 5);
         p_205215_0_.put("key.categories.ui", 6);
         p_205215_0_.put("key.categories.misc", 7);
+        // YSM：注册自有键位分类，否则 compareTo 里 CATEGORY_ORDER.get(...) 为 null 会让控制界面 NPE。
+        // （Forge 用 KeyModifier/分类注册钩子做同一件事；此处手改反编译源码。）
+        p_205215_0_.put("key.category.yes_steve_model", 8);
     });
     private final String keyDescription;
     private final InputMappings.Input keyCodeDefault;

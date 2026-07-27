@@ -5,6 +5,7 @@ import com.mentalfrostbyte.jello.event.impl.game.action.EventKeyPress;
 import com.mentalfrostbyte.jello.event.impl.game.action.EventMouse;
 import com.mentalfrostbyte.jello.event.impl.game.action.EventMouseHover;
 import com.mentalfrostbyte.jello.util.system.other.ModuleKeyPress;
+import com.elfmcys.yesstevemodel.client.input.InputStateKey;
 import net.minecraft.client.gui.IGuiEventListener;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.settings.KeyBinding;
@@ -48,6 +49,7 @@ public class MouseHelper {
      * Will be called when a mouse button is pressed or released.
      */
     private void mouseButtonCallback(long handle, int button, int action, int mods) {
+        InputStateKey.onMouseInput(button, action);
         if (Client.getInstance().guiManager.getCurrentScreen() != null) {
             Client.getInstance().guiManager.onMouseButtonCallback(button, action);
         } else {

@@ -3519,6 +3519,37 @@ public abstract class Entity implements INameable, ICommandSource {
         return this.func_242282_l(partialTicks).add(0.0D, (double) this.eyeHeight * 0.7D, 0.0D);
     }
 
+    // ==== YSM capability seam (standalone client; no Forge capability system) ====
+    private java.util.Map<String, Object> ysmCapabilities;
+
+    private static final java.util.Map<String, java.util.function.Function<Entity, Object>> ysmLazyCapabilities = new java.util.HashMap<>();
+
+    public static <T> void registerLazyCapability(com.elfmcys.yesstevemodel.capability.Capability<T> cap, java.util.function.Function<Entity, T> factory) {
+        ysmLazyCapabilities.put(cap.id(), entity -> factory.apply(entity));
+    }
+
+    @SuppressWarnings("unchecked")
+    public <T> Optional<T> getCapability(com.elfmcys.yesstevemodel.capability.Capability<T> cap) {
+        Object value = this.ysmCapabilities == null ? null : this.ysmCapabilities.get(cap.id());
+        if (value == null) {
+            java.util.function.Function<Entity, Object> factory = ysmLazyCapabilities.get(cap.id());
+            if (factory != null) {
+                value = factory.apply(this);
+                if (value != null) {
+                    setCapability(cap, (T) value);
+                }
+            }
+        }
+        return Optional.ofNullable((T) value);
+    }
+
+    public <T> void setCapability(com.elfmcys.yesstevemodel.capability.Capability<T> cap, T value) {
+        if (this.ysmCapabilities == null) {
+            this.ysmCapabilities = new java.util.HashMap<>();
+        }
+        this.ysmCapabilities.put(cap.id(), value);
+    }
+
     @FunctionalInterface
     public interface IMoveCallback {
         void accept(Entity p_accept_1_, double p_accept_2_, double p_accept_4_, double p_accept_6_);

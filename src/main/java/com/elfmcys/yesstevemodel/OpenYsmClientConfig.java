@@ -1,5 +1,8 @@
 package com.elfmcys.yesstevemodel;
 
+import java.util.LinkedHashSet;
+import java.util.Set;
+
 public final class OpenYsmClientConfig {
     private boolean enabled = true;
     private boolean renderPlayers = true;
@@ -10,6 +13,21 @@ public final class OpenYsmClientConfig {
     private float extraPlayerYawOffset = 5.0F;
     private String selectedModelId = "misc/2_steve";
     private String selectedTextureId = "";
+    /**
+     * Upstream {@code GeneralConfig.SHOW_MODEL_ID_FIRST} (model picker shows the file id instead
+     * of the localized display name).
+     */
+    private boolean showModelIdFirst = false;
+    /**
+     * Upstream {@code GeneralConfig.DISCLAIMER_SHOW}: the disclaimer is shown once before the
+     * first opening of the model picker, until the user ticks "read".
+     */
+    private boolean disclaimerShow = true;
+    /**
+     * Local stand-in for upstream's server-synced {@code StarModelsCapability}: the standalone
+     * client keeps starred (favourite) models in the client config instead.
+     */
+    private Set<String> starModels = new LinkedHashSet<>();
 
     public boolean isEnabled() {
         return this.enabled;
@@ -81,5 +99,32 @@ public final class OpenYsmClientConfig {
 
     public void setSelectedTextureId(String selectedTextureId) {
         this.selectedTextureId = selectedTextureId == null ? "" : selectedTextureId;
+    }
+
+    public boolean isShowModelIdFirst() {
+        return this.showModelIdFirst;
+    }
+
+    public void setShowModelIdFirst(boolean showModelIdFirst) {
+        this.showModelIdFirst = showModelIdFirst;
+    }
+
+    public boolean isDisclaimerShow() {
+        return this.disclaimerShow;
+    }
+
+    public void setDisclaimerShow(boolean disclaimerShow) {
+        this.disclaimerShow = disclaimerShow;
+    }
+
+    public Set<String> getStarModels() {
+        if (this.starModels == null) {
+            this.starModels = new LinkedHashSet<>();
+        }
+        return this.starModels;
+    }
+
+    public void setStarModels(Set<String> starModels) {
+        this.starModels = starModels == null ? new LinkedHashSet<>() : starModels;
     }
 }

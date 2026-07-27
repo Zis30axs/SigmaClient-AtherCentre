@@ -7,6 +7,7 @@ import com.google.common.collect.Multimap;
 import com.google.common.collect.Sets;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import javax.sound.sampled.UnsupportedAudioFileException;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -456,19 +457,19 @@ public class SoundEngine
                                     }
                                     else
                                     {
-                                        if (p_sound instanceof YsmOggSound)
+                                        if (p_sound instanceof IStreamedSound)
                                         {
-                                            YsmOggSound ysmSound = (YsmOggSound)p_sound;
+                                            IStreamedSound streamedSound = (IStreamedSound)p_sound;
                                             channelmanager$entry.runOnSoundExecutor((source) ->
                                             {
                                                 try
                                                 {
-                                                    source.playStreamableSounds(ysmSound.openStream());
+                                                    source.playStreamableSounds(streamedSound.openStream());
                                                     source.play();
                                                 }
-                                                catch (IOException exception)
+                                                catch (IOException | UnsupportedAudioFileException exception)
                                                 {
-                                                    LOGGER.warn("Failed to play YSM OGG sound", exception);
+                                                    LOGGER.warn("Failed to play custom streamed sound", exception);
                                                     source.stop();
                                                 }
                                             });
@@ -636,7 +637,19 @@ public class SoundEngine
         return this.sndSystem.getDebugString();
     }
 
-    private static final class YsmOggSound implements ITickableSound
+    /**
+     * Custom-sound seam: an {@link ISound} that supplies its own {@link IAudioStream} instead of
+     * a resource-pack file. When the resolved {@code Sound} has {@code stream: true}, the play
+     * branch above calls {@link #openStream()} on the sound executor. Implemented by
+     * {@link YsmOggSound} (mmdskin/raw-OGG playback) and by the geckolib3 chain's
+     * {@code YSMSoundInstance} (model-bundled Vorbis/Opus tracks, W5).
+     */
+    public interface IStreamedSound
+    {
+        IAudioStream openStream() throws IOException, UnsupportedAudioFileException;
+    }
+
+    private static final class YsmOggSound implements ITickableSound, IStreamedSound
     {
         private static final ResourceLocation SOUND_ID = new ResourceLocation("yes_steve_model", "custom");
         private final byte[] oggData;
@@ -680,7 +693,8 @@ public class SoundEngine
             return this.oggData.length == 0;
         }
 
-        private IAudioStream openStream() throws IOException
+        @Override
+        public IAudioStream openStream() throws IOException
         {
             return this.looping ? new OggAudioStreamWrapper(OggAudioStream::new, new ByteArrayInputStream(this.oggData))
                     : new OggAudioStream(new ByteArrayInputStream(this.oggData));

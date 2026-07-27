@@ -466,6 +466,9 @@ public class Minecraft extends RecursiveEventLoop<Runnable> implements ISnooperI
         this.resourceManager = new SimpleReloadableResourceManager(ResourcePackType.CLIENT_RESOURCES);
         YesSteveModel.bootstrap(this.gameDir.toPath());
         this.resourceManager.addReloadListener(YesSteveModel.getReloadListener());
+        com.shiroha.mmdskin.MmdSkinClient.initClient();
+        this.gameSettings.keyBindings = org.apache.commons.lang3.ArrayUtils.addAll(
+                this.gameSettings.keyBindings, com.shiroha.mmdskin.MmdSkinClientHooks.keyBindings());
         this.resourcePackRepository.reloadPacksFromFinders();
         this.gameSettings.fillResourcePackList(this.resourcePackRepository);
         this.languageManager = new LanguageManager(this.gameSettings.language);
@@ -1579,6 +1582,14 @@ public class Minecraft extends RecursiveEventLoop<Runnable> implements ISnooperI
             RotationCore.currentPitch = player.rotationPitch;
         }
 
+        // mmdskin：模型仓储 tick + 配置轮盘/快捷模型键位轮询。
+        com.shiroha.mmdskin.MmdSkinClientHooks.onClientTick(this);
+
+        // YSM：等价上游 client/event/ClientTickEvent#onClientTick（TickEvent.Phase.START）的完整
+        // 副作用集合。此前只接了 UploadManager 一项，导致 tickCount 恒为 0（GUI 预览实体的动画时间
+        // 永不推进）、refreshRate 恒为硬编码 20（动画求值节流按 20Hz 而非显示器刷新率）。
+        com.elfmcys.yesstevemodel.client.event.ClientTickEvent.onClientTick();
+
         // Naven-style EventRunTicks PRE: fires at the head of the game tick so
         // modules (Scaffold, RotationManager, etc.) can run their per-tick
         // setup logic BEFORE processKeyBinds() dispatches mouse-click events.
@@ -2150,6 +2161,7 @@ public class Minecraft extends RecursiveEventLoop<Runnable> implements ISnooperI
     }
 
     public void unloadWorld(Screen screenIn) {
+        com.shiroha.mmdskin.MmdSkinClientHooks.onDisconnect();
         ClientPlayNetHandler clientplaynethandler = this.getConnection();
 
         if (clientplaynethandler != null) {

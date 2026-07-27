@@ -188,6 +188,8 @@ public class IngameGui extends AbstractGui
 
         this.scaledWidth = this.mc.getMainWindow().getScaledWidth();
         this.scaledHeight = this.mc.getMainWindow().getScaledHeight();
+        // mmdskin：性能调试 HUD（配置开关门控，默认关闭）。
+        com.shiroha.mmdskin.MmdSkinClientHooks.renderHud(matrixStack);
         FontRenderer fontrenderer = this.getFontRenderer();
         RenderSystem.enableBlend();
 

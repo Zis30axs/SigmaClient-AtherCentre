@@ -17,7 +17,12 @@ public class VirtualAssetsPack extends VanillaPack
 
     public VirtualAssetsPack(ResourceIndex p_i48115_1_)
     {
-        super("minecraft");
+        // mmdskin：注册 mmdskin 命名空间，使 assets/mmdskin/lang 等经资源管理器加载。
+        // YSM：同理注册 yes_steve_model —— 没有它 SimpleReloadableResourceManager 不会为该命名空间
+        // 建 FallbackResourceManager，于是 lang/*.json（ClientLanguageMap 只遍历已注册命名空间）与
+        // yes_steve_model:texture/roulette.png（轮盘 GUI 的滑条/复选框贴图）全部解析失败。
+        // 已用 VanillaPack 探针实测：声明命名空间后两者均可从 classpath 命中。
+        super("minecraft", "mmdskin", "yes_steve_model");
         this.field_195785_b = p_i48115_1_;
     }
 

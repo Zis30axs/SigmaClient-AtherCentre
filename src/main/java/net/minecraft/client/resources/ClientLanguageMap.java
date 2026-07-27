@@ -58,6 +58,8 @@ public class ClientLanguageMap extends LanguageMap
             }
         }
 
+        // mmdskin：从 classpath 直接合入 mmdskin 翻译（绕开 ResourceIndex 资源体系）。
+        com.shiroha.mmdskin.util.MmdSkinLangInjector.inject(p_239497_1_, map);
         return new ClientLanguageMap(ImmutableMap.copyOf(map), flag);
     }
 

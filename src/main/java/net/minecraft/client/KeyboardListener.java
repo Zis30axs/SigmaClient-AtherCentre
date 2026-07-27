@@ -6,6 +6,7 @@ import javax.annotation.Nullable;
 import com.mentalfrostbyte.Client;
 import com.mentalfrostbyte.jello.event.impl.game.action.EventKeyPress;
 import com.mentalfrostbyte.jello.util.system.other.ModuleKeyPress;
+import com.elfmcys.yesstevemodel.client.input.InputStateKey;
 import net.minecraft.block.BlockState;
 import net.minecraft.client.gui.IGuiEventListener;
 import net.minecraft.client.gui.INestedGuiEventHandler;
@@ -341,6 +342,7 @@ public class KeyboardListener
     {
         if (windowPointer == this.mc.getMainWindow().getHandle())
         {
+            InputStateKey.onKeyInput(key, action);
             if (Client.getInstance().guiManager.getCurrentScreen() != null) {
                 Client.getInstance().guiManager.handleKeyEvent(key, action);
                 return;
@@ -559,6 +561,11 @@ public class KeyboardListener
             }
 
             Reflector.ForgeHooksClient_fireKeyInput.call(key, scanCode, action, modifiers);
+            // YSM：等价上游 InputEvent.Key 总线上 AnimationRouletteKey / ExtraAnimationKey /
+            // AnimationLockEvent 三个 @SubscribeEvent。与 Forge 完全同位：onKeyEvent 的最后一条语句，
+            // 在截屏/全屏、currentScreen 派发、KeyBinding.setKeyBindState/onTick 之后，且不吞键——
+            // 与同键的原版绑定共存，屏幕已消费该键时（轮盘吞自己的热键）不会到达这里。
+            com.elfmcys.yesstevemodel.client.input.YsmKeyDispatcher.fireKeyInput(key, scanCode, action);
         }
     }
 

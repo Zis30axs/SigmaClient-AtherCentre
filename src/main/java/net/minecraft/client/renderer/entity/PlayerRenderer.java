@@ -1,13 +1,6 @@
 package net.minecraft.client.renderer.entity;
 
 import com.elfmcys.yesstevemodel.YesSteveModel;
-import com.elfmcys.yesstevemodel.client.OpenYsmBakedPlayerModel;
-import com.elfmcys.yesstevemodel.client.OpenYsmGl4PlayerModel;
-import com.elfmcys.yesstevemodel.client.OpenYsmPlayerModel;
-import com.elfmcys.yesstevemodel.client.OpenYsmPlayerModelState;
-import com.elfmcys.yesstevemodel.client.OpenYsmBone;
-import com.elfmcys.yesstevemodel.client.OpenYsmRendererMode;
-import com.elfmcys.yesstevemodel.client.OpenYsmRendererSelector;
 import com.mojang.blaze3d.matrix.MatrixStack;
 import com.mojang.blaze3d.vertex.IVertexBuilder;
 import net.minecraft.client.Minecraft;
@@ -49,10 +42,6 @@ import net.minecraft.util.text.StringTextComponent;
 public class PlayerRenderer extends LivingRenderer<AbstractClientPlayerEntity, PlayerModel<AbstractClientPlayerEntity>>
 {
     private final boolean useSmallArms;
-    private OpenYsmPlayerModel openYsmModel;
-    private String openYsmModelId;
-    private OpenYsmGl4PlayerModel openYsmGl4Model;
-    private String openYsmGl4ModelId;
 
     public PlayerRenderer(EntityRendererManager renderManager)
     {
@@ -77,50 +66,61 @@ public class PlayerRenderer extends LivingRenderer<AbstractClientPlayerEntity, P
 
     public void render(AbstractClientPlayerEntity entityIn, float entityYaw, float partialTicks, MatrixStack matrixStackIn, IRenderTypeBuffer bufferIn, int packedLightIn)
     {
-        if (this.isOpenYsmRenderingEnabled())
+        // mmdskin 接管优先级链：MMD 已选模型 -> MMD；否则 YSM 启用 -> YSM；否则原版。
+        // 两套模型系统互不引用（isYsmActive 恒 false，见移植说明）。
+        boolean mmdFirstPersonSkip = false;
+        Minecraft mmdMc = Minecraft.getInstance();
+        boolean mmdIsLocalPlayer = mmdMc.player != null && mmdMc.player.getUniqueID().equals(entityIn.getUniqueID());
+        if (mmdIsLocalPlayer && mmdMc.gameSettings.getPointOfView().func_243192_a()
+                && !com.shiroha.mmdskin.player.runtime.FirstPersonManager.shouldRenderFirstPerson())
         {
-            OpenYsmRendererMode rendererMode = OpenYsmRendererSelector.getMode();
-            if (rendererMode.usesGl4Renderer())
+            com.shiroha.mmdskin.player.runtime.FirstPersonManager.reset();
+            mmdFirstPersonSkip = true;
+        }
+
+        if (!mmdFirstPersonSkip)
+        {
+            com.shiroha.mmdskin.player.render.PlayerRenderAction mmdAction =
+                    com.shiroha.mmdskin.player.render.PlayerRenderEntrypoint.handleRender(
+                            entityIn, entityYaw, partialTicks, matrixStackIn, bufferIn, packedLightIn, false);
+            com.shiroha.mmdskin.player.render.PlayerRenderEntrypoint.renderSceneOverlay(
+                    entityIn, partialTicks, matrixStackIn, packedLightIn);
+            if (mmdIsLocalPlayer)
             {
-                OpenYsmGl4PlayerModel ysmModel = this.getOpenYsmGl4Model(entityIn);
-                if (ysmModel != null)
-                {
-                    PlayerModel<AbstractClientPlayerEntity> previousModel = this.entityModel;
-                    ResourceLocation previousTexture = this.getLocationTextureCustom();
-                    this.entityModel = ysmModel;
-                    this.setLocationTextureCustom(ysmModel.getTexture());
-                    try
-                    {
-                        this.setModelVisibilities(entityIn);
-                        super.render(entityIn, entityYaw, partialTicks, matrixStackIn, bufferIn, packedLightIn);
-                    }
-                    finally
-                    {
-                        this.entityModel = previousModel;
-                        this.setLocationTextureCustom(previousTexture);
-                    }
-                    return;
-                }
+                com.shiroha.mmdskin.MmdSkinClientHooks.debugRenderDecision(entityIn.getName().getString(), mmdAction);
             }
-            else if (rendererMode.usesYsm())
+
+            if (mmdAction == com.shiroha.mmdskin.player.render.PlayerRenderAction.CANCEL)
             {
-                OpenYsmPlayerModel ysmModel = this.getOpenYsmModel(entityIn);
-                if (ysmModel != null)
+                return;
+            }
+            if (mmdAction == com.shiroha.mmdskin.player.render.PlayerRenderAction.SUPER_RENDER)
+            {
+                super.render(entityIn, entityYaw, partialTicks, matrixStackIn, bufferIn, packedLightIn);
+                return;
+            }
+        }
+
+        // YSM re-port render chain (geckolib3): mirrors upstream ReplacePlayerRenderEvent routing.
+        // Priority chain MMD -> YSM -> vanilla; MMD is handled above. The local player's
+        // capability is first bound to the configured selection (syncSelectedModel), then
+        // ticked. YSM only takes over when the model is both active and ready; otherwise we
+        // fall through to vanilla rendering instead of cancelling into an invisible player.
+        if (this.isOpenYsmRenderingEnabled() && !entityIn.isSpectator())
+        {
+            com.elfmcys.yesstevemodel.capability.PlayerCapability ysmCapability =
+                    entityIn.getCapability(com.elfmcys.yesstevemodel.capability.PlayerCapabilityProvider.PLAYER_CAP).orElse(null);
+            if (ysmCapability != null)
+            {
+                if (entityIn instanceof net.minecraft.client.entity.player.ClientPlayerEntity)
                 {
-                    PlayerModel<AbstractClientPlayerEntity> previousModel = this.entityModel;
-                    ResourceLocation previousTexture = this.getLocationTextureCustom();
-                    this.entityModel = ysmModel;
-                    this.setLocationTextureCustom(ysmModel.getTexture());
-                    try
-                    {
-                        this.setModelVisibilities(entityIn);
-                        super.render(entityIn, entityYaw, partialTicks, matrixStackIn, bufferIn, packedLightIn);
-                    }
-                    finally
-                    {
-                        this.entityModel = previousModel;
-                        this.setLocationTextureCustom(previousTexture);
-                    }
+                    com.elfmcys.yesstevemodel.client.ClientModelManager.syncSelectedModel(ysmCapability);
+                }
+                ysmCapability.tickModel();
+                if (ysmCapability.isModelActive() && ysmCapability.isModelReady())
+                {
+                    com.elfmcys.yesstevemodel.client.renderer.RendererManager.getPlayerRenderer()
+                            .render(entityIn, entityYaw, partialTicks, matrixStackIn, bufferIn, packedLightIn);
                     return;
                 }
             }
@@ -128,75 +128,6 @@ public class PlayerRenderer extends LivingRenderer<AbstractClientPlayerEntity, P
 
         this.setModelVisibilities(entityIn);
         super.render(entityIn, entityYaw, partialTicks, matrixStackIn, bufferIn, packedLightIn);
-    }
-
-    private OpenYsmPlayerModel getOpenYsmModel(AbstractClientPlayerEntity entityIn)
-    {
-        if (entityIn.isSpectator())
-        {
-            return null;
-        }
-
-        OpenYsmBakedPlayerModel bakedModel = OpenYsmPlayerModelState.getBakedModelForPlayer(entityIn,
-                Minecraft.getInstance().getResourceManager());
-        if (bakedModel == null)
-        {
-            return null;
-        }
-
-        String modelKey = this.openYsmModelKey(bakedModel);
-        if (this.openYsmModel == null || !modelKey.equals(this.openYsmModelId))
-        {
-            this.openYsmModel = new OpenYsmPlayerModel(bakedModel, this.useSmallArms);
-            this.openYsmModelId = modelKey;
-        }
-
-        return this.openYsmModel;
-    }
-
-    private OpenYsmGl4PlayerModel getOpenYsmGl4Model(AbstractClientPlayerEntity entityIn)
-    {
-        if (entityIn.isSpectator())
-        {
-            return null;
-        }
-
-        OpenYsmBakedPlayerModel bakedModel = OpenYsmPlayerModelState.getBakedModelForPlayer(entityIn,
-                Minecraft.getInstance().getResourceManager());
-        if (bakedModel == null || bakedModel.getGeoModel() == null)
-        {
-            return null;
-        }
-
-        String modelKey = this.openYsmModelKey(bakedModel);
-        if (this.openYsmGl4Model == null || !modelKey.equals(this.openYsmGl4ModelId))
-        {
-            this.openYsmGl4Model = new OpenYsmGl4PlayerModel(bakedModel, this.useSmallArms);
-            this.openYsmGl4ModelId = modelKey;
-        }
-
-        return this.openYsmGl4Model;
-    }
-
-    @Override
-    protected boolean shouldRenderLayersBeforeModel(AbstractClientPlayerEntity entityIn)
-    {
-        if (this.entityModel instanceof OpenYsmPlayerModel)
-        {
-            return ((OpenYsmPlayerModel)this.entityModel).getBakedModel().isRenderLayersFirst();
-        }
-        if (this.entityModel instanceof OpenYsmGl4PlayerModel)
-        {
-            return ((OpenYsmGl4PlayerModel)this.entityModel).getBakedModel().isRenderLayersFirst();
-        }
-        return false;
-    }
-
-    private String openYsmModelKey(OpenYsmBakedPlayerModel bakedModel)
-    {
-        return bakedModel.getId() + "|" + bakedModel.getTexture()
-                + "|cutout=" + bakedModel.isAllCutout()
-                + "|layersFirst=" + bakedModel.isRenderLayersFirst();
     }
 
     public Vector3d getRenderOffset(AbstractClientPlayerEntity entityIn, float partialTicks)
@@ -298,11 +229,6 @@ public class PlayerRenderer extends LivingRenderer<AbstractClientPlayerEntity, P
 
     protected void preRenderCallback(AbstractClientPlayerEntity entitylivingbaseIn, MatrixStack matrixStackIn, float partialTickTime)
     {
-        if (this.entityModel instanceof OpenYsmPlayerModel || this.entityModel instanceof OpenYsmGl4PlayerModel)
-        {
-            matrixStackIn.translate(0.0D, 0.01D, 0.0D);
-            return;
-        }
         float f = 0.9375F;
         matrixStackIn.scale(0.9375F, 0.9375F, 0.9375F);
     }
@@ -342,100 +268,34 @@ public class PlayerRenderer extends LivingRenderer<AbstractClientPlayerEntity, P
     private void renderItem(MatrixStack matrixStackIn, IRenderTypeBuffer bufferIn, int combinedLightIn, AbstractClientPlayerEntity playerIn, ModelRenderer rendererArmIn, ModelRenderer rendererArmwearIn)
     {
         boolean rightArm = rendererArmIn == this.entityModel.bipedRightArm;
-        if (this.isOpenYsmRenderingEnabled())
+        // MMD keeps top priority on the first-person arm path: while an MMD model is
+        // selected, the YSM arm chain is skipped so the MMD/vanilla arm renders instead.
+        boolean mmdSelected = this.isMmdModelSelected(playerIn);
+        // YSM re-port first-person arm chain (geckolib3): bind the locally selected
+        // model, tick, and render the custom arm only when the arm mesh actually
+        // provides hand bones; any failure falls through to the vanilla arm.
+        if (!mmdSelected && this.isOpenYsmRenderingEnabled() && !playerIn.isSpectator()
+                && playerIn instanceof net.minecraft.client.entity.player.ClientPlayerEntity)
         {
-            OpenYsmRendererMode rendererMode = OpenYsmRendererSelector.getMode();
-            if (rendererMode.usesGl4Renderer())
+            com.elfmcys.yesstevemodel.capability.PlayerCapability ysmArmCapability =
+                    playerIn.getCapability(com.elfmcys.yesstevemodel.capability.PlayerCapabilityProvider.PLAYER_CAP).orElse(null);
+            if (ysmArmCapability != null)
             {
-                OpenYsmGl4PlayerModel ysmPlayerModel = this.getOpenYsmGl4Model(playerIn);
-                if (ysmPlayerModel != null)
+                com.elfmcys.yesstevemodel.client.ClientModelManager.syncSelectedModel(ysmArmCapability);
+                ysmArmCapability.tickModel();
+                if (ysmArmCapability.isModelActive() && ysmArmCapability.isModelReady())
                 {
-                    PlayerModel<AbstractClientPlayerEntity> previousModel = this.entityModel;
-                    ResourceLocation previousTexture = this.getLocationTextureCustom();
-                    this.entityModel = ysmPlayerModel;
-                    this.setLocationTextureCustom(ysmPlayerModel.getTexture());
-                    try
+                    com.elfmcys.yesstevemodel.client.model.ModelAssembly ysmArmAssembly = ysmArmCapability.getModelAssembly();
+                    com.elfmcys.yesstevemodel.geckolib3.geo.render.built.GeoModel ysmArmModel =
+                            ysmArmAssembly != null ? ysmArmAssembly.getAnimationBundle().getArmModel() : null;
+                    boolean hasCustomHand = ysmArmModel != null
+                            && (rightArm ? ysmArmModel.hasCustomRightHand : ysmArmModel.hasCustomLeftHand);
+                    if (hasCustomHand && com.elfmcys.yesstevemodel.client.renderer.RendererManager.getHandRenderer()
+                            .renderHandItem((net.minecraft.client.entity.player.ClientPlayerEntity) playerIn, ysmArmAssembly,
+                                    ysmArmCapability, rightArm ? net.minecraft.util.HandSide.RIGHT : net.minecraft.util.HandSide.LEFT,
+                                    matrixStackIn, bufferIn, combinedLightIn, Minecraft.getInstance().getRenderPartialTicks()))
                     {
-                        this.setModelVisibilities(playerIn);
-                        ysmPlayerModel.swingProgress = 0.0F;
-                        ysmPlayerModel.isSneak = false;
-                        ysmPlayerModel.swimAnimation = 0.0F;
-                        float ageInTicks = firstPersonAgeInTicks(playerIn);
-                        ysmPlayerModel.setRotationAngles(playerIn, 0.0F, 0.0F, ageInTicks, 0.0F, 0.0F);
-
-                        IVertexBuilder customBuffer = bufferIn.getBuffer(ysmPlayerModel.getRenderType(ysmPlayerModel.getTexture()));
-                        if (ysmPlayerModel.renderFirstPersonArm(playerIn, rightArm, ageInTicks,
-                                matrixStackIn, customBuffer, combinedLightIn, OverlayTexture.NO_OVERLAY,
-                                1.0F, 1.0F, 1.0F, 1.0F))
-                        {
-                            return;
-                        }
-                        if (ysmPlayerModel.renderBone(rightArm ? "RightArm" : "LeftArm", rightArm ? "MRightArm" : "MLeftArm",
-                                matrixStackIn, customBuffer, combinedLightIn, OverlayTexture.NO_OVERLAY,
-                                1.0F, 1.0F, 1.0F, 1.0F))
-                        {
-                            return;
-                        }
-                    }
-                    finally
-                    {
-                        this.entityModel = previousModel;
-                        this.setLocationTextureCustom(previousTexture);
-                    }
-                }
-            }
-            else if (rendererMode.usesYsm())
-            {
-                OpenYsmPlayerModel ysmPlayerModel = this.getOpenYsmModel(playerIn);
-                if (ysmPlayerModel != null)
-                {
-                    PlayerModel<AbstractClientPlayerEntity> previousModel = this.entityModel;
-                    ResourceLocation previousTexture = this.getLocationTextureCustom();
-                    this.entityModel = ysmPlayerModel;
-                    this.setLocationTextureCustom(ysmPlayerModel.getTexture());
-                    try
-                    {
-                        this.setModelVisibilities(playerIn);
-                        ysmPlayerModel.swingProgress = 0.0F;
-                        ysmPlayerModel.isSneak = false;
-                        ysmPlayerModel.swimAnimation = 0.0F;
-                        float ageInTicks = firstPersonAgeInTicks(playerIn);
-                        ysmPlayerModel.setRotationAngles(playerIn, 0.0F, 0.0F, ageInTicks, 0.0F, 0.0F);
-
-                        IVertexBuilder customBuffer = bufferIn.getBuffer(ysmPlayerModel.getRenderType(ysmPlayerModel.getTexture()));
-                        if (ysmPlayerModel.renderFirstPersonArm(playerIn, rightArm, ageInTicks,
-                                matrixStackIn, customBuffer, combinedLightIn, OverlayTexture.NO_OVERLAY,
-                                1.0F, 1.0F, 1.0F, 1.0F))
-                        {
-                            return;
-                        }
-                        OpenYsmBone bone = this.getArmBone(ysmPlayerModel.getBakedModel(), rightArm);
-                        if (bone != null)
-                        {
-                            float prevX = bone.getRenderer().rotateAngleX;
-                            float prevY = bone.getRenderer().rotateAngleY;
-                            float prevZ = bone.getRenderer().rotateAngleZ;
-                            bone.getRenderer().rotateAngleX = 0.0F;
-                            bone.getRenderer().rotateAngleY = 0.0F;
-                            bone.getRenderer().rotateAngleZ = 0.0F;
-
-                            try
-                            {
-                                bone.getRenderer().render(matrixStackIn, customBuffer, combinedLightIn, OverlayTexture.NO_OVERLAY, 1.0F, 1.0F, 1.0F, 1.0F);
-                            }
-                            finally
-                            {
-                                bone.getRenderer().rotateAngleX = prevX;
-                                bone.getRenderer().rotateAngleY = prevY;
-                                bone.getRenderer().rotateAngleZ = prevZ;
-                            }
-                            return;
-                        }
-                    }
-                    finally
-                    {
-                        this.entityModel = previousModel;
-                        this.setLocationTextureCustom(previousTexture);
+                        return;
                     }
                 }
             }
@@ -452,21 +312,6 @@ public class PlayerRenderer extends LivingRenderer<AbstractClientPlayerEntity, P
         rendererArmIn.render(matrixStackIn, bufferIn.getBuffer(RenderType.getEntitySolid(playerIn.getLocationSkin())), combinedLightIn, OverlayTexture.NO_OVERLAY);
         rendererArmwearIn.rotateAngleX = 0.0F;
         rendererArmwearIn.render(matrixStackIn, bufferIn.getBuffer(RenderType.getEntityTranslucent(playerIn.getLocationSkin())), combinedLightIn, OverlayTexture.NO_OVERLAY);
-    }
-
-    private OpenYsmBone getArmBone(OpenYsmBakedPlayerModel bakedModel, boolean rightArm)
-    {
-        OpenYsmBone armBone = bakedModel.getBones().get(rightArm ? "RightArm" : "LeftArm");
-        if (armBone != null)
-        {
-            return armBone;
-        }
-        return bakedModel.getBones().get(rightArm ? "MRightArm" : "MLeftArm");
-    }
-
-    private static float firstPersonAgeInTicks(AbstractClientPlayerEntity playerIn)
-    {
-        return (float)playerIn.ticksExisted + Minecraft.getInstance().getRenderPartialTicks();
     }
 
     protected void applyRotations(AbstractClientPlayerEntity entityLiving, MatrixStack matrixStackIn, float ageInTicks, float rotationYaw, float partialTicks)
@@ -516,41 +361,28 @@ public class PlayerRenderer extends LivingRenderer<AbstractClientPlayerEntity, P
 
     private void applyBaseRotations(AbstractClientPlayerEntity entityLiving, MatrixStack matrixStackIn, float ageInTicks, float rotationYaw, float partialTicks)
     {
-        if (!this.usesOpenYsmModel())
-        {
-            super.applyRotations(entityLiving, matrixStackIn, ageInTicks, rotationYaw, partialTicks);
-            return;
-        }
-
-        int previousDeathTime = entityLiving.deathTime;
-        boolean wasSpinAttacking = entityLiving.isSpinAttacking();
-        entityLiving.deathTime = 0;
-        if (wasSpinAttacking)
-        {
-            entityLiving.setLivingFlagForYsmRender(4, false);
-        }
-
-        try
-        {
-            super.applyRotations(entityLiving, matrixStackIn, ageInTicks, rotationYaw, partialTicks);
-        }
-        finally
-        {
-            entityLiving.deathTime = previousDeathTime;
-            if (wasSpinAttacking)
-            {
-                entityLiving.setLivingFlagForYsmRender(4, true);
-            }
-        }
-    }
-
-    private boolean usesOpenYsmModel()
-    {
-        return this.entityModel instanceof OpenYsmPlayerModel || this.entityModel instanceof OpenYsmGl4PlayerModel;
+        super.applyRotations(entityLiving, matrixStackIn, ageInTicks, rotationYaw, partialTicks);
     }
 
     private boolean isOpenYsmRenderingEnabled()
     {
         return YesSteveModel.isEnabled() && YesSteveModel.getClientConfig().isRenderPlayers();
+    }
+
+    /**
+     * True when mmdskin has a real model selected for this player (anything other than
+     * the "default (vanilla)" entry). Used to keep the MMD -> YSM -> vanilla priority
+     * chain intact on the first-person arm path.
+     */
+    private boolean isMmdModelSelected(AbstractClientPlayerEntity player)
+    {
+        if (!com.shiroha.mmdskin.MmdSkinClient.isInitialized())
+        {
+            return false;
+        }
+        String selectedModel = com.shiroha.mmdskin.ui.config.ModelSelectorConfig.getInstance()
+                .getPlayerModel(player.getName().getString());
+        return selectedModel != null && !selectedModel.isEmpty()
+                && !com.shiroha.mmdskin.config.UIConstants.DEFAULT_MODEL_NAME.equals(selectedModel);
     }
 }

@@ -1,0 +1,131 @@
+package com.elfmcys.yesstevemodel.client.entity;
+
+import com.elfmcys.yesstevemodel.client.event.ClientTickEvent;
+import com.elfmcys.yesstevemodel.client.model.ModelAssembly;
+import com.elfmcys.yesstevemodel.client.animation.AnimationTracker;
+import com.elfmcys.yesstevemodel.client.animation.molang.PhysicsManager;
+import com.elfmcys.yesstevemodel.geckolib3.core.event.predicate.AnimationEvent;
+import com.elfmcys.yesstevemodel.geckolib3.core.molang.util.StringPool;
+import com.elfmcys.yesstevemodel.util.log.ILogger;
+import com.mojang.authlib.GameProfile;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.world.ClientWorld;
+import net.minecraft.client.entity.player.AbstractClientPlayerEntity;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.player.PlayerEntity;
+import org.jetbrains.annotations.NotNull;
+
+import java.util.UUID;
+
+public final class PlayerPreviewEntity extends CustomPlayerEntity implements IPreviewAnimatable {
+
+    private final AnimationTracker animationStateMachine;
+
+    private boolean customAnimationActive;
+
+    public PlayerPreviewEntity() {
+        super(new DummyPlayer(), false, false);
+        this.animationStateMachine = new AnimationTracker();
+    }
+
+    @Override
+    public boolean isPreview() {
+        return true;
+    }
+
+    @Override
+    public void resetModel() {
+        this.animationStateMachine.setQueuedAnimation(StringPool.EMPTY);
+        this.animationStateMachine.setCurrentAnimation(StringPool.EMPTY);
+        this.animationStateMachine.setPreviousAnimation(StringPool.EMPTY);
+        this.customAnimationActive = false;
+        super.resetModel();
+    }
+
+    @NotNull
+    public AnimationTracker getAnimationStateMachine() {
+        return this.animationStateMachine;
+    }
+
+    @Override
+    public PhysicsManager getPhysicsManager() {
+        return this.physicsManager;
+    }
+
+    public void setCustomAnimationActive(boolean z) {
+        this.customAnimationActive = z;
+    }
+
+    @Override
+    public boolean isDebugMode() {
+        return true;
+    }
+
+    @Override
+    public boolean shouldRenderOverlay() {
+        return this.customAnimationActive;
+    }
+
+    @Override
+    public int getRefreshRate() {
+        return ClientTickEvent.getRefreshRate();
+    }
+
+    @Override
+    public boolean hasCustomTexture() {
+        return true;
+    }
+
+    @Override
+    public AnimationEvent<?> processAnimationImpl(float partialTick, boolean z) {
+        Entity entity2 = this.entity;
+        if ((entity2 instanceof DummyPlayer) && !((DummyPlayer) entity2).ensureLevel()) {
+            return null;
+        }
+        return super.processAnimationImpl(partialTick, z);
+    }
+
+    public static boolean isPreviewPlayer(PlayerEntity player) {
+        return player instanceof DummyPlayer;
+    }
+
+    @Override
+    public boolean shouldSkipAnimation(AnimationEvent<?> event) {
+        return true;
+    }
+
+    @Override
+    public ILogger getLogger() {
+        return null;
+    }
+
+    @Override
+    @NotNull
+    public LivingAnimatable<PlayerEntity>.TexturedModelWrapper buildRenderShape(ModelAssembly modelAssembly, boolean z) {
+        return new TexturedModelWrapper(modelAssembly, z, false, true, 300);
+    }
+
+    private static class DummyPlayer extends AbstractClientPlayerEntity {
+        public DummyPlayer() {
+            super(Minecraft.getInstance().world, createGameProfile());
+        }
+
+        private static GameProfile createGameProfile() {
+            UUID uuidRandomUUID = UUID.randomUUID();
+            return new GameProfile(uuidRandomUUID, "ysm_" + uuidRandomUUID.toString().replace('-', '_'));
+        }
+
+        public boolean isSpectator() {
+            return false;
+        }
+
+        public boolean isCreative() {
+            return false;
+        }
+
+        public boolean ensureLevel() {
+            ClientWorld clientWorld = Minecraft.getInstance().world;
+            return clientWorld != null;
+        }
+    }
+}

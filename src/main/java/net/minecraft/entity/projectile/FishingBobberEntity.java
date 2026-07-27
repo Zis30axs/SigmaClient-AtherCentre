@@ -60,6 +60,19 @@ public class FishingBobberEntity extends ProjectileEntity
     private final int luck;
     private final int lureSpeed;
 
+    /** YSM: replaces upstream's FishingHookAccessor mixin. */
+    public boolean isBiting()
+    {
+        return this.field_234597_c_;
+    }
+
+    /** YSM: replaces upstream's FishingHookAccessor mixin. */
+    @Nullable
+    public Entity getHookedIn()
+    {
+        return this.caughtEntity;
+    }
+
     private FishingBobberEntity(World p_i50219_1_, PlayerEntity p_i50219_2_, int p_i50219_3_, int p_i50219_4_)
     {
         super(EntityType.FISHING_BOBBER, p_i50219_1_);

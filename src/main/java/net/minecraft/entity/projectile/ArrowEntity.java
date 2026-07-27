@@ -24,7 +24,12 @@ public class ArrowEntity extends AbstractArrowEntity
 {
     private static final DataParameter<Integer> COLOR = EntityDataManager.createKey(ArrowEntity.class, DataSerializers.VARINT);
     private Potion potion = Potions.EMPTY;
-    private final Set<EffectInstance> customPotionEffects = Sets.newHashSet();
+   private final Set<EffectInstance> customPotionEffects = Sets.newHashSet();
+
+    public Set<EffectInstance> getCustomPotionEffects()
+    {
+        return this.customPotionEffects;
+    }
     private boolean fixedColor;
 
     public ArrowEntity(EntityType <? extends ArrowEntity > type, World worldIn)

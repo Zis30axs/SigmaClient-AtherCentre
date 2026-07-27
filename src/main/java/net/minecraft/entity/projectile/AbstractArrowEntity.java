@@ -43,7 +43,7 @@ import net.minecraft.util.math.vector.Vector3d;
 import net.minecraft.util.registry.Registry;
 import net.minecraft.world.World;
 
-public abstract class AbstractArrowEntity extends ProjectileEntity
+public abstract class AbstractArrowEntity extends ProjectileEntity implements com.elfmcys.yesstevemodel.util.accessors.ProjectileStateAccessor
 {
     private static final DataParameter<Byte> CRITICAL = EntityDataManager.createKey(AbstractArrowEntity.class, DataSerializers.BYTE);
     private static final DataParameter<Byte> PIERCE_LEVEL = EntityDataManager.createKey(AbstractArrowEntity.class, DataSerializers.BYTE);
@@ -60,10 +60,32 @@ public abstract class AbstractArrowEntity extends ProjectileEntity
     private IntOpenHashSet piercedEntities;
     private List<Entity> hitEntities;
 
+    /** YSM: item id of the shooter's main hand at the moment the arrow was fired. */
+    private String yesSteveModel$ownerMainHandItem = "";
+
     public boolean yesSteveModel$isInGround()
     {
         return this.inGround;
     }
+
+    @Override
+    public boolean isInGround()
+    {
+        return this.inGround;
+    }
+
+    @Override
+    public int getInGroundTime()
+    {
+        return this.ticksInGround;
+    }
+
+    @Override
+    public String getOwnerItemId()
+    {
+        return this.yesSteveModel$ownerMainHandItem;
+    }
+
 
     protected AbstractArrowEntity(EntityType <? extends AbstractArrowEntity > type, World worldIn)
     {
@@ -619,6 +641,17 @@ public abstract class AbstractArrowEntity extends ProjectileEntity
         if (entityIn instanceof PlayerEntity)
         {
             this.pickupStatus = ((PlayerEntity)entityIn).abilities.isCreativeMode ? AbstractArrowEntity.PickupStatus.CREATIVE_ONLY : AbstractArrowEntity.PickupStatus.ALLOWED;
+        }
+
+        // YSM: record the shooter's main-hand item id (upstream AbstractArrowEntityMixin#onSetOwner).
+        if (entityIn instanceof LivingEntity)
+        {
+            ResourceLocation resourcelocation = Registry.ITEM.getKey(((LivingEntity)entityIn).getHeldItemMainhand().getItem());
+
+            if (resourcelocation != null)
+            {
+                this.yesSteveModel$ownerMainHandItem = resourcelocation.toString();
+            }
         }
     }
 

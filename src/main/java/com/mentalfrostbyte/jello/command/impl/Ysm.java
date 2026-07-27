@@ -1,12 +1,10 @@
 package com.mentalfrostbyte.jello.command.impl;
 
 import com.elfmcys.yesstevemodel.OpenYsmModelEntry;
-import com.elfmcys.yesstevemodel.OpenYsmTextureOption;
 import com.elfmcys.yesstevemodel.YesSteveModel;
-import com.elfmcys.yesstevemodel.client.OpenYsmModelLoader;
-import com.elfmcys.yesstevemodel.gui.OpenYsmActionWheelScreen;
-import com.elfmcys.yesstevemodel.gui.OpenYsmExtraPlayerRenderScreen;
-import com.elfmcys.yesstevemodel.gui.OpenYsmModelSelectionScreen;
+import com.elfmcys.yesstevemodel.client.ClientModelManager;
+import com.elfmcys.yesstevemodel.client.model.ModelAssembly;
+import com.elfmcys.yesstevemodel.gui.OpenYsmScreens;
 import com.mentalfrostbyte.jello.command.Command;
 import com.mentalfrostbyte.jello.managers.util.command.ChatCommandArguments;
 import com.mentalfrostbyte.jello.managers.util.command.ChatCommandExecutor;
@@ -155,20 +153,19 @@ public class Ysm extends Command {
         String textureId = "";
         if (args.length > 2) {
             textureId = value(args[2]);
-            try {
-                List<OpenYsmTextureOption> textures = OpenYsmModelLoader.listTextures(mc.getResourceManager(), entry.get());
-                OpenYsmTextureOption texture = OpenYsmModelLoader.findTexture(textures, textureId);
-                if (texture == null) {
-                    error(executor, "Texture not found in model " + id + ": " + textureId);
-                    sendTextureSuggestion(executor, textureId, textures);
-                    executor.send("Use .ysm textures " + id + " to show available textures.");
-                    return;
-                }
-                textureId = texture.getId();
-            } catch (Exception exception) {
-                error(executor, "Could not read textures for " + id + ": " + shortError(exception));
+            List<String> textures = textureIds(id);
+            if (textures == null) {
+                error(executor, "Could not read textures for " + id + " (model failed to load).");
                 return;
             }
+            String match = matchTexture(textures, textureId);
+            if (match == null) {
+                error(executor, "Texture not found in model " + id + ": " + textureId);
+                sendTextureSuggestion(executor, textureId, textures);
+                executor.send("Use .ysm textures " + id + " to show available textures.");
+                return;
+            }
+            textureId = match;
         }
 
         YesSteveModel.selectModel(id, textureId);
@@ -248,20 +245,42 @@ public class Ysm extends Command {
             return;
         }
 
-        try {
-            List<OpenYsmTextureOption> textures = OpenYsmModelLoader.listTextures(mc.getResourceManager(), entry.get());
-            executor.send("OpenYSM textures for " + entry.get().getId() + ": " + textures.size());
-            int limit = Math.min(textures.size(), 12);
-            for (int i = 0; i < limit; i++) {
-                OpenYsmTextureOption texture = textures.get(i);
-                executor.send(texture.getId() + " | " + texture.getPath());
-            }
-            if (textures.size() > limit) {
-                executor.send("...and " + (textures.size() - limit) + " more.");
-            }
-        } catch (Exception exception) {
-            error(executor, "Could not read textures for " + entry.get().getId() + ": " + shortError(exception));
+        List<String> textures = textureIds(entry.get().getId());
+        if (textures == null) {
+            error(executor, "Could not read textures for " + entry.get().getId() + " (model failed to load).");
+            return;
         }
+        executor.send("OpenYSM textures for " + entry.get().getId() + ": " + textures.size());
+        int limit = Math.min(textures.size(), 12);
+        for (int i = 0; i < limit; i++) {
+            executor.send(textures.get(i));
+        }
+        if (textures.size() > limit) {
+            executor.send("...and " + (textures.size() - limit) + " more.");
+        }
+    }
+
+    private static List<String> textureIds(String modelId) {
+        ClientModelManager.ensureModelLoaded(modelId);
+        Optional<ModelAssembly> assembly = ClientModelManager.getModelContext(modelId);
+        if (!assembly.isPresent() || assembly.get().getAnimationBundle() == null) {
+            return null;
+        }
+        return new ArrayList<>(assembly.get().getAnimationBundle().getTextures().getKeys());
+    }
+
+    private static String matchTexture(List<String> textures, String input) {
+        for (String texture : textures) {
+            if (texture.equals(input)) {
+                return texture;
+            }
+        }
+        for (String texture : textures) {
+            if (texture.equalsIgnoreCase(input)) {
+                return texture;
+            }
+        }
+        return null;
     }
 
     private void sendModelList(ChatCommandExecutor executor) {
@@ -294,7 +313,7 @@ public class Ysm extends Command {
             return;
         }
 
-        mc.displayGuiScreen(new OpenYsmModelSelectionScreen());
+        OpenYsmScreens.openModelManager();
         executor.send("Opened OpenYSM model selector.");
     }
 
@@ -304,7 +323,7 @@ public class Ysm extends Command {
             return;
         }
 
-        mc.displayGuiScreen(new OpenYsmActionWheelScreen());
+        OpenYsmScreens.openActionWheel();
         executor.send("Opened OpenYSM action wheel.");
     }
 
@@ -314,7 +333,7 @@ public class Ysm extends Command {
             return;
         }
 
-        mc.displayGuiScreen(new OpenYsmExtraPlayerRenderScreen());
+        OpenYsmScreens.openExtraPlayerRender();
         executor.send("Opened OpenYSM extra player render config.");
     }
 
@@ -429,11 +448,9 @@ public class Ysm extends Command {
         sendSuggestion(executor, input, ids.toArray(new String[0]));
     }
 
-    private void sendTextureSuggestion(ChatCommandExecutor executor, String input, List<OpenYsmTextureOption> textures) {
+    private void sendTextureSuggestion(ChatCommandExecutor executor, String input, List<String> textures) {
         List<String> ids = new ArrayList<>();
-        for (OpenYsmTextureOption texture : textures) {
-            ids.add(texture.getId());
-        }
+        ids.addAll(textures);
         sendSuggestion(executor, input, ids.toArray(new String[0]));
     }
 

@@ -1,6 +1,5 @@
 package net.minecraft.entity.item;
 
-import com.elfmcys.yesstevemodel.network.OpenYsmNetwork;
 import java.util.List;
 import javax.annotation.Nullable;
 import net.minecraft.block.Block;
@@ -326,7 +325,6 @@ public class BoatEntity extends Entity
         }
 
         super.tick();
-        OpenYsmNetwork.syncExtraEntityModel(this, this.yesSteveModel$getFirstPlayerPassenger());
         this.tickLerp();
 
         if (this.canPassengerSteer())
@@ -402,18 +400,6 @@ public class BoatEntity extends Entity
                 }
             }
         }
-    }
-
-    private PlayerEntity yesSteveModel$getFirstPlayerPassenger()
-    {
-        for (Entity passenger : this.getPassengers())
-        {
-            if (passenger instanceof PlayerEntity)
-            {
-                return (PlayerEntity)passenger;
-            }
-        }
-        return null;
     }
 
     private void updateRocking()

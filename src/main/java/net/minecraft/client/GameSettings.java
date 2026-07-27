@@ -308,6 +308,11 @@ public class GameSettings
         this.ofKeyBindZoom = new KeyBinding("of.key.zoom", 67, "key.categories.misc");
         this.keyBindings = ArrayUtils.add(this.keyBindings, this.ofKeyBindZoom);
         KeyUtils.fixKeyConflicts(this.keyBindings, new KeyBinding[] {this.ofKeyBindZoom});
+        // YSM：沿用上面 ofKeyBindZoom 的先例把 YSM 键位并入 keyBindings（轮盘 Z、锁定 ALT+L、
+        // 8 个默认未绑定的额外动画键）。必须在 loadOptions() 之前，否则 options.txt 里玩家自定义的
+        // 绑定读不回来；也让它们出现在原版“控制”界面里。
+        this.keyBindings = ArrayUtils.addAll(this.keyBindings,
+                com.elfmcys.yesstevemodel.client.input.YsmKeyDispatcher.registerAll());
         this.renderDistanceChunks = 8;
         this.loadOptions();
         Config.initGameSettings(this);

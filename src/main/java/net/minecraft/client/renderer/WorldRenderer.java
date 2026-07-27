@@ -1346,6 +1346,15 @@ public class WorldRenderer implements IResourceManagerReloadListener, AutoClosea
                     this.mc.getMainWindow().getFramebufferHeight());
         }
 
+        // YSM (upstream WorldRendererMixin#renderLevel, injected at the FogRenderer.setupColor call):
+        // the whole world-render pass counts as "first person model rendering", which is what makes
+        // ysm.person_view report the real camera type instead of a constant.
+        if (com.elfmcys.yesstevemodel.YesSteveModel.isAvailable())
+        {
+            com.elfmcys.yesstevemodel.client.renderer.ModelPreviewRenderer.setFirstPersonMode(true);
+            com.elfmcys.yesstevemodel.client.entity.EntityRenderCache.tick(partialTicks);
+        }
+
         FogRenderer.updateFogColor(activeRenderInfoIn, partialTicks, this.mc.world,
                 this.mc.gameSettings.renderDistanceChunks, gameRendererIn.getBossColorModifier(partialTicks));
         RenderSystem.clear(16640, Minecraft.IS_RUNNING_ON_MAC);
@@ -1537,6 +1546,15 @@ public class WorldRenderer implements IResourceManagerReloadListener, AutoClosea
         }
 
         this.checkMatrixStack(matrixStackIn);
+
+        // YSM (upstream WorldRendererMixin#renderLevelPost, injected at the RenderType.entitySolid call):
+        // closes the window opened above, after every entity has been rendered.
+        if (com.elfmcys.yesstevemodel.YesSteveModel.isAvailable())
+        {
+            com.elfmcys.yesstevemodel.client.entity.EntityRenderCache.clear();
+            com.elfmcys.yesstevemodel.client.renderer.ModelPreviewRenderer.setFirstPersonMode(false);
+        }
+
         irendertypebuffer$impl.finish(RenderType.getEntitySolid(AtlasTexture.LOCATION_BLOCKS_TEXTURE));
         irendertypebuffer$impl.finish(RenderType.getEntityCutout(AtlasTexture.LOCATION_BLOCKS_TEXTURE));
         irendertypebuffer$impl.finish(RenderType.getEntityCutoutNoCull(AtlasTexture.LOCATION_BLOCKS_TEXTURE));

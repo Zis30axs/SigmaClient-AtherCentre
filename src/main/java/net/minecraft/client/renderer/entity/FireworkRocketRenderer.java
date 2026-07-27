@@ -1,7 +1,5 @@
 package net.minecraft.client.renderer.entity;
 
-import com.elfmcys.yesstevemodel.client.OpenYsmExtraEntityModel;
-import com.elfmcys.yesstevemodel.client.OpenYsmExtraEntityRenderHelper;
 import com.mojang.blaze3d.matrix.MatrixStack;
 import net.minecraft.client.renderer.IRenderTypeBuffer;
 import net.minecraft.client.renderer.model.ItemCameraTransforms;
@@ -23,8 +21,6 @@ public class FireworkRocketRenderer extends EntityRenderer<FireworkRocketEntity>
 
     public void render(FireworkRocketEntity entityIn, float entityYaw, float partialTicks, MatrixStack matrixStackIn, IRenderTypeBuffer bufferIn, int packedLightIn)
     {
-        OpenYsmExtraEntityModel ysmModel = OpenYsmExtraEntityRenderHelper.find(entityIn,
-                OpenYsmExtraEntityModel.Kind.PROJECTILE, "minecraft:firework_rocket");
         matrixStackIn.push();
         matrixStackIn.rotate(this.renderManager.getCameraOrientation());
         matrixStackIn.rotate(Vector3f.YP.rotationDegrees(180.0F));
@@ -36,14 +32,7 @@ public class FireworkRocketRenderer extends EntityRenderer<FireworkRocketEntity>
             matrixStackIn.rotate(Vector3f.XP.rotationDegrees(90.0F));
         }
 
-        if (ysmModel != null)
-        {
-            OpenYsmExtraEntityRenderHelper.render(ysmModel, entityIn, partialTicks, matrixStackIn, bufferIn, packedLightIn);
-        }
-        else
-        {
-            this.itemRenderer.renderItem(entityIn.getItem(), ItemCameraTransforms.TransformType.GROUND, packedLightIn, OverlayTexture.NO_OVERLAY, matrixStackIn, bufferIn);
-        }
+        this.itemRenderer.renderItem(entityIn.getItem(), ItemCameraTransforms.TransformType.GROUND, packedLightIn, OverlayTexture.NO_OVERLAY, matrixStackIn, bufferIn);
         matrixStackIn.pop();
         super.render(entityIn, entityYaw, partialTicks, matrixStackIn, bufferIn, packedLightIn);
     }

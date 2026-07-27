@@ -1,6 +1,5 @@
 package net.minecraft.entity.projectile;
 
-import com.elfmcys.yesstevemodel.network.OpenYsmNetwork;
 import java.util.UUID;
 import javax.annotation.Nullable;
 import net.minecraft.block.BlockState;
@@ -84,7 +83,6 @@ public abstract class ProjectileEntity extends Entity
             this.field_234611_d_ = this.func_234615_h_();
         }
 
-        OpenYsmNetwork.syncExtraEntityModel(this, this.func_234616_v_());
         super.tick();
     }
 

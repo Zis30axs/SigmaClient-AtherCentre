@@ -1,7 +1,5 @@
 package net.minecraft.client.renderer.entity.layers;
 
-import com.elfmcys.yesstevemodel.client.OpenYsmGl4PlayerModel;
-import com.elfmcys.yesstevemodel.client.OpenYsmPlayerModel;
 import com.mojang.blaze3d.matrix.MatrixStack;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.IRenderTypeBuffer;
@@ -63,14 +61,6 @@ public class HeldItemLayer<T extends LivingEntity, M extends EntityModel<T> & IH
 
     private boolean translateHand(HandSide sideIn, MatrixStack matrixStackIn)
     {
-        if (this.getEntityModel() instanceof OpenYsmGl4PlayerModel)
-        {
-            return ((OpenYsmGl4PlayerModel)this.getEntityModel()).translateItemHand(sideIn, matrixStackIn);
-        }
-        if (this.getEntityModel() instanceof OpenYsmPlayerModel)
-        {
-            return ((OpenYsmPlayerModel)this.getEntityModel()).translateItemHand(sideIn, matrixStackIn);
-        }
         this.getEntityModel().translateHand(sideIn, matrixStackIn);
         return false;
     }

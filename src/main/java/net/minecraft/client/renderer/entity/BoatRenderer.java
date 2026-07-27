@@ -1,7 +1,5 @@
 package net.minecraft.client.renderer.entity;
 
-import com.elfmcys.yesstevemodel.client.OpenYsmExtraEntityModel;
-import com.elfmcys.yesstevemodel.client.OpenYsmExtraEntityRenderHelper;
 import com.mojang.blaze3d.matrix.MatrixStack;
 import com.mojang.blaze3d.vertex.IVertexBuilder;
 import net.minecraft.client.renderer.IRenderTypeBuffer;
@@ -27,8 +25,6 @@ public class BoatRenderer extends EntityRenderer<BoatEntity>
 
     public void render(BoatEntity entityIn, float entityYaw, float partialTicks, MatrixStack matrixStackIn, IRenderTypeBuffer bufferIn, int packedLightIn)
     {
-        OpenYsmExtraEntityModel ysmModel = OpenYsmExtraEntityRenderHelper.find(entityIn,
-                OpenYsmExtraEntityModel.Kind.VEHICLE, "minecraft:boat");
         matrixStackIn.push();
         matrixStackIn.translate(0.0D, 0.375D, 0.0D);
         matrixStackIn.rotate(Vector3f.YP.rotationDegrees(180.0F - entityYaw));
@@ -54,21 +50,14 @@ public class BoatRenderer extends EntityRenderer<BoatEntity>
 
         matrixStackIn.scale(-1.0F, -1.0F, 1.0F);
         matrixStackIn.rotate(Vector3f.YP.rotationDegrees(90.0F));
-        if (ysmModel != null)
-        {
-            OpenYsmExtraEntityRenderHelper.render(ysmModel, entityIn, partialTicks, matrixStackIn, bufferIn, packedLightIn);
-        }
-        else
-        {
-            this.modelBoat.setRotationAngles(entityIn, partialTicks, 0.0F, -0.1F, 0.0F, 0.0F);
-            IVertexBuilder ivertexbuilder = bufferIn.getBuffer(this.modelBoat.getRenderType(this.getEntityTexture(entityIn)));
-            this.modelBoat.render(matrixStackIn, ivertexbuilder, packedLightIn, OverlayTexture.NO_OVERLAY, 1.0F, 1.0F, 1.0F, 1.0F);
+        this.modelBoat.setRotationAngles(entityIn, partialTicks, 0.0F, -0.1F, 0.0F, 0.0F);
+        IVertexBuilder ivertexbuilder = bufferIn.getBuffer(this.modelBoat.getRenderType(this.getEntityTexture(entityIn)));
+        this.modelBoat.render(matrixStackIn, ivertexbuilder, packedLightIn, OverlayTexture.NO_OVERLAY, 1.0F, 1.0F, 1.0F, 1.0F);
 
-            if (!entityIn.canSwim())
-            {
-                IVertexBuilder ivertexbuilder1 = bufferIn.getBuffer(RenderType.getWaterMask());
-                this.modelBoat.func_228245_c_().render(matrixStackIn, ivertexbuilder1, packedLightIn, OverlayTexture.NO_OVERLAY);
-            }
+        if (!entityIn.canSwim())
+        {
+            IVertexBuilder ivertexbuilder1 = bufferIn.getBuffer(RenderType.getWaterMask());
+            this.modelBoat.func_228245_c_().render(matrixStackIn, ivertexbuilder1, packedLightIn, OverlayTexture.NO_OVERLAY);
         }
 
         matrixStackIn.pop();
