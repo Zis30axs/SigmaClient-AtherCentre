@@ -198,7 +198,7 @@ public class BlockFlyCustomMode extends Module {
 
         if (this.oldSlot >= 0 && this.oldSlot < 9) {
             mc.player.inventory.currentItem = this.oldSlot;
-            mc.playerController.syncCurrentPlayItem();
+            //mc.playerController.syncCurrentPlayItem(); grim post held item change
         }
 
         this.oldSlot = -1;

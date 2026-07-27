@@ -13,6 +13,8 @@ import team.sdhq.eventBus.annotations.priority.HighestPriority;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
+import static com.mentalfrostbyte.jello.util.game.MinecraftUtil.mc;
+
 public class BotManager extends Manager {
     public AntiBotBase antiBot;
     public List<Entity> bots = new CopyOnWriteArrayList<>();
@@ -30,7 +32,7 @@ public class BotManager extends Manager {
     @EventTarget
     @HighestPriority
     public void onPlayerTick(EventTick var1) {
-        if (this.antiBot != null) {
+        if (this.antiBot != null && mc.player != null) {
             for (PlayerEntity entity : EntityUtil.getPlayerEntities()) {
                 if (!this.antiBot.isBot(entity)) {
                     if (this.antiBot.isNotBot(entity)) {

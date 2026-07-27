@@ -39,6 +39,8 @@ import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.entity.projectile.ProjectileHelper;
 import net.minecraft.item.SwordItem;
+import net.minecraft.network.play.client.CEntityActionPacket;
+import net.minecraft.network.play.client.CHeldItemChangePacket;
 import net.minecraft.network.play.server.SEntityStatusPacket;
 import net.minecraft.network.play.server.SAnimateHandPacket;
 import net.minecraft.util.Hand;
@@ -54,6 +56,8 @@ import team.sdhq.eventBus.annotations.priority.LowestPriority;
 import java.util.*;
 import java.util.Map.Entry;
 
+import static com.mentalfrostbyte.jello.util.game.MinecraftUtil.mc;
+
 @SuppressWarnings({ "unused", "cast" })
 public class KillAura extends Module {
     public static boolean isActive = false;
@@ -65,6 +69,7 @@ public class KillAura extends Module {
     private final NumberSetting<Float> rotationSpeed;
     private final BooleanSetting useRotationSpeed;
     private final BooleanSetting hitEvent;
+    private final BooleanSetting testks;
     public HashMap<Entity, Animation> entityAnimation = new HashMap<>();
     public static InteractAutoBlock autoBlock;
     private PredictionAutoBlock predictionAutoBlock;
@@ -132,6 +137,7 @@ public class KillAura extends Module {
         this.registerSetting(
                 this.hitEvent = new BooleanSetting("HitEvent", "Change the hit event (vanilla autoblock?legit)", true));
         this.registerSetting(new BooleanSetting("Perfect Hit", "Hit entities at the perfect moment", false));
+        this.registerSetting(this.testks = new BooleanSetting("1.9+GrimKS","Grim Cooldown KS",false));
         this.registerSetting(new BooleanSetting("Players", "Hit players", true));
         this.registerSetting(new BooleanSetting("Animals", "Hit animals", false));
         this.registerSetting(new BooleanSetting("Monsters", "Hit monsters", false));
@@ -368,13 +374,14 @@ public class KillAura extends Module {
                     currentRotation.yaw = RotationUtils.gcdFix(limitedRotation, oldRots)[0];
                     currentRotation.pitch = RotationUtils.gcdFix(limitedRotation, oldRots)[1];
 
-                    RotationCore.currentYaw = currentRotation.yaw;
-                    RotationCore.currentPitch = currentRotation.pitch;
+                    RotationManager.setRotations(currentRotation.yaw,currentRotation.pitch);
                 }
 
                 mc.gameRenderer.getMouseOver(1.0F); // might fix issue with slow raytrace update
 
                 if (!this.hitEvent.currentValue) {
+                    //mc.getConnection().getNetworkManager().sendPacket(new CHeldItemChangePacket((mc.player.inventory.currentItem + 1) % 9));
+                    //mc.getConnection().getNetworkManager().sendPacket(new CHeldItemChangePacket(mc.player.inventory.currentItem));
                     attack();
                 }
 
@@ -384,6 +391,7 @@ public class KillAura extends Module {
             }
         }
     }
+
 
     @EventTarget
     public void onRunTicks(EventRunTicks event) {
@@ -878,6 +886,10 @@ public class KillAura extends Module {
                         if (autoBlock.isBlocking()
                                 && !"Prediction".equals(this.getStringSettingValueByName("Autoblock Mode"))) {
                             autoBlock.stopAutoBlock();
+                        }
+                        
+                        if (testks.getCurrentValue()) {
+                            mc.player.swingArm(Hand.MAIN_HAND);
                         }
 
                         if (ViaLoadingBase.getInstance().getTargetVersion().olderThanOrEqualTo(ProtocolVersion.v1_8)) {
