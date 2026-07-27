@@ -34,7 +34,6 @@
   "gui.yes_steve_model.config.disable_player_render": "Desativar renderização extra do jogador",
   "gui.yes_steve_model.config.use_compatibility_renderer": "Usar renderizador de compatibilidade",
   "gui.yes_steve_model.config.sound_volume": "Volume das Animações: ",
-  "gui.yes_steve_model.disclaimer.text": "Obrigado por usar o mod! Por favor, leia atentamente os termos a seguir e concorde com eles:\n\n1. O download e o uso do mod são completamente gratuitos, e a confidencialidade dos modelos não é garantida de nenhuma forma.\n\n2. A equipe de desenvolvimento não participa de transações relacionadas a modelos. Em caso de disputas comerciais, a responsabilidade será inteiramente sua.\n\n3. O criador detém os direitos autorais dos modelos que criar e também assume as responsabilidades correspondentes, sem qualquer relação com a equipe de desenvolvimento.\n\n4. Não crie modelos que violem leis ou regulamentos. Esta equipe de desenvolvimento também se opõe a qualquer forma de criação de conteúdo R18/NSFW! Nunca participamos de qualquer criação de conteúdo relacionado!",
   "gui.yes_steve_model.disclaimer.read": "Eu li e concordo com os termos de uso",
   "gui.yes_steve_model.disclaimer.close": "Fechar",
   "gui.yes_steve_model.open_model_folder.open": "Abrir Pasta de Modelos",

@@ -183,20 +183,31 @@ public class NetworkManager extends SimpleChannelInboundHandler<IPacket<?>> {
     protected void channelRead0(ChannelHandlerContext context, IPacket<?> packet) {
         if (this.channel.isOpen()) {
             try {
-                EventGlobalReceivePacket globalpacketEvent = new EventGlobalReceivePacket(packet);
-                EventBus.call(globalpacketEvent);
-                if (globalpacketEvent.cancelled) {
-                    return;
+                IPacket<?> packetToProcess = packet;
+
+                // Only the client-side connection may fire module events. In singleplayer the
+                // integrated server's connection reuses this class; letting modules intercept,
+                // cancel or replay server-side packets corrupts the local connection (e.g. a
+                // replayed S-packet reaching ServerPlayNetHandler causes a ClassCastException,
+                // which kills keep-alive handling and kicks the player with "Timed out").
+                if (this.direction == PacketDirection.CLIENTBOUND) {
+                    EventGlobalReceivePacket globalpacketEvent = new EventGlobalReceivePacket(packet);
+                    EventBus.call(globalpacketEvent);
+                    if (globalpacketEvent.cancelled) {
+                        return;
+                    }
+
+                    EventReceivePacket packetEvent = new EventReceivePacket(packet);
+                    EventBus.call(packetEvent);
+
+                    if (packetEvent.cancelled) {
+                        return;
+                    }
+
+                    packetToProcess = packetEvent.packet;
                 }
 
-                EventReceivePacket packetEvent = new EventReceivePacket(packet);
-                EventBus.call(packetEvent);
-
-                if (packetEvent.cancelled) {
-                    return;
-                }
-
-                processPacket(packetEvent.packet, this.packetListener);
+                processPacket(packetToProcess, this.packetListener);
             } catch (ThreadQuickExitException ignored) {
             }
 
@@ -227,13 +238,20 @@ public class NetworkManager extends SimpleChannelInboundHandler<IPacket<?>> {
     }
 
     public void sendPacket(IPacket<?> packetIn, @Nullable GenericFutureListener<? extends Future<? super Void>> p_201058_2_) {
-        EventSendPacket event = new EventSendPacket(packetIn);
-        EventBus.call(event);
+        IPacket<?> packet = packetIn;
 
-        if (event.cancelled) {
-            return;
+        // See channelRead0: never expose the integrated server's outbound packets to module
+        // events, otherwise modules like Blink/FakeLag capture clientbound packets and later
+        // replay them into the client channel, breaking the singleplayer connection.
+        if (this.direction == PacketDirection.CLIENTBOUND) {
+            EventSendPacket event = new EventSendPacket(packetIn);
+            EventBus.call(event);
+
+            if (event.cancelled) {
+                return;
+            }
+            packet = event.packet;
         }
-        IPacket<?> packet = event.packet;
 
         if (ServerboundInteractionAdapter.trySend(this, packet)) {
             return;

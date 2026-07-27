@@ -34,7 +34,6 @@
   "gui.yes_steve_model.config.disable_player_render": "Nonaktifkan render pemain tambahan",
   "gui.yes_steve_model.config.use_compatibility_renderer": "Gunakan penyesuai render",
   "gui.yes_steve_model.config.sound_volume": "Volume Suara Animasi: ",
-  "gui.yes_steve_model.disclaimer.text": "Terima kasih telah menggunakan mod ini, pastikan untuk membaca ketentuan terkait dengan cermat dan menyetujui ketentuan:\n\n1. Unduh dan penggunaan mod sepenuhnya gratis, dan kerahasiaan model tidak dijamin dalam bentuk apa pun\n\n2. Tim pengembang tidak berpartisipasi dalam transaksi model yang relevan, mohon bertanggung jawab atas perselisihan transaksi yang timbul\n\n3. Pembuat menikmati hak cipta atas model yang dibuat, dan juga memikul tanggung jawab yang sesuai, yang tidak ada hubungannya dengan tim pengembang\n\n4. Mohon jangan membuat model apa pun yang melanggar hukum dan peraturan. Tim produksi ini juga menentang segala bentuk pembuatan konten R18/NSFW! Kami tidak pernah berpartisipasi dalam pembuatan konten terkait apa pun!",
   "gui.yes_steve_model.disclaimer.read": "Saya telah membaca dan menyetujui ketentuan penggunaan",
   "gui.yes_steve_model.disclaimer.close": "Tutup",
   "gui.yes_steve_model.open_model_folder.open": "Buka Folder Model",

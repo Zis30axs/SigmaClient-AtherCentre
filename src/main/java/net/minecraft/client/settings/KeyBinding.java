@@ -26,9 +26,11 @@ public class KeyBinding implements Comparable<KeyBinding>
         p_205215_0_.put("key.categories.multiplayer", 5);
         p_205215_0_.put("key.categories.ui", 6);
         p_205215_0_.put("key.categories.misc", 7);
-        // YSM：注册自有键位分类，否则 compareTo 里 CATEGORY_ORDER.get(...) 为 null 会让控制界面 NPE。
-        // （Forge 用 KeyModifier/分类注册钩子做同一件事；此处手改反编译源码。）
+        // 自有模组键位分类必须写入 CATEGORY_ORDER，否则 ControlsScreen 排序时
+        // CATEGORY_ORDER.get(...) 为 null，compareTo 直接 NPE。
+        // （Forge 有分类注册钩子；此处手改反编译源码。）
         p_205215_0_.put("key.category.yes_steve_model", 8);
+        p_205215_0_.put("key.categories.mmdskin", 9);
     });
     private final String keyDescription;
     private final InputMappings.Input keyCodeDefault;
@@ -161,7 +163,33 @@ public class KeyBinding implements Comparable<KeyBinding>
 
     public int compareTo(KeyBinding p_compareTo_1_)
     {
-        return this.keyCategory.equals(p_compareTo_1_.keyCategory) ? I18n.format(this.keyDescription).compareTo(I18n.format(p_compareTo_1_.keyDescription)) : CATEGORY_ORDER.get(this.keyCategory).compareTo(CATEGORY_ORDER.get(p_compareTo_1_.keyCategory));
+        if (this.keyCategory.equals(p_compareTo_1_.keyCategory))
+        {
+            return I18n.format(this.keyDescription).compareTo(I18n.format(p_compareTo_1_.keyDescription));
+        }
+        else
+        {
+            // 未注册分类时回退到末尾 + 名称排序，避免控制界面打开即崩。
+            Integer orderA = CATEGORY_ORDER.get(this.keyCategory);
+            Integer orderB = CATEGORY_ORDER.get(p_compareTo_1_.keyCategory);
+
+            if (orderA == null && orderB == null)
+            {
+                return this.keyCategory.compareTo(p_compareTo_1_.keyCategory);
+            }
+            else if (orderA == null)
+            {
+                return 1;
+            }
+            else if (orderB == null)
+            {
+                return -1;
+            }
+            else
+            {
+                return orderA.compareTo(orderB);
+            }
+        }
     }
 
     public static Supplier<ITextComponent> getDisplayString(String key)

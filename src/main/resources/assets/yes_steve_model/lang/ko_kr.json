@@ -37,7 +37,6 @@
   "gui.yes_steve_model.config.disable_player_render": "추가적인 플레이어 렌더링 숨기기",
   "gui.yes_steve_model.config.use_compatibility_renderer": "호환성 우선 렌더러 사용",
   "gui.yes_steve_model.config.sound_volume": "애니메이션 사운드 볼륨: ",
-  "gui.yes_steve_model.disclaimer.text": "모드를 사용해 주셔서 감사합니다, 모드를 사용하시기 전 다음 이용약관을 잘 읽고 동의해 주시기 바랍니다:\n\n1. 해당 모드의 다운로드와 이용은 완전히 무료이며, 이용하시는 모델의 기밀성이 보장되지 않습니다.\n\n2. 해당 모드의 개발팀은 Ysm 모델 판매나 구매등에 연관되어 있지 않으며, 모델 거래시 발생하는 분쟁은 순전히 판매자/구매자의 책임입니다.\n\n3. Ysm용 모델의 권리와 책임은 모델 제작자의 것이며, 개발팀과는 무관합니다.\n\n4. 법률 및 규정을 위반하는 모델을 제작하지 마세요. 본 개발팀은 모든 형태의 R18/NSFW 콘텐츠 제작에 반대합니다! 저희는 관련 콘텐츠 제작에 참여한 적이 없습니다!",
   "gui.yes_steve_model.disclaimer.read": "이용약관을 읽었으며 이에 동의합니다",
   "gui.yes_steve_model.disclaimer.close": "닫기",
   "gui.yes_steve_model.open_model_folder.open": "모델 폴더 열기",

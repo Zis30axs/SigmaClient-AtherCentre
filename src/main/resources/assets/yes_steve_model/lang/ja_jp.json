@@ -33,7 +33,6 @@
   "gui.yes_steve_model.config.disable_player_render": "追加のプレイヤーモデルを描画しない",
   "gui.yes_steve_model.config.use_compatibility_renderer": "互換性レンダラーを使用",
   "gui.yes_steve_model.config.sound_volume": "アニメーション音量:",
-  "gui.yes_steve_model.disclaimer.text": "このMODをご利用いただきありがとうございます。以下の利用規約を必ずお読みいただき、同意してください:\n\n\n1. このMODのダウンロードおよび使用は完全に無料であり、モデルの機密性は一切保証されません\n\n2. 開発チームは関連するモデル取引に関与しません。取引により発生した問題に関する責任を負いません\n\n3. 作成者は作成したモデルの著作権を有し、同時にそれに伴う責任を負います。これらは開発チームとは無関係です\n\n4. 法律や規制に違反するモデルを作成しないでください。開発チームはR18関連のモデルの作成に反対しています！また、R18関連のモデル制作に一切関与しません！",
   "gui.yes_steve_model.disclaimer.read": "利用規約を読み、同意しました",
   "gui.yes_steve_model.disclaimer.close": "閉じる",
   "gui.yes_steve_model.open_model_folder.open": "モデルフォルダを開く",
