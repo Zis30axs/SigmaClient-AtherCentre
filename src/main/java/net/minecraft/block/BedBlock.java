@@ -164,7 +164,8 @@ public class BedBlock extends HorizontalBlock implements ITileEntityProvider
      */
     public void onLanded(IBlockReader worldIn, Entity entityIn)
     {
-        if (entityIn.isSuppressingBounce())
+        // beds only bounce since 1.12
+        if (entityIn.isSuppressingBounce() || JelloPortal.getVersion().olderThanOrEqualTo(ProtocolVersion.v1_11_1))
         {
             super.onLanded(worldIn, entityIn);
         }

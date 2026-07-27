@@ -83,6 +83,8 @@ import java.util.function.Predicate;
 
 public abstract class PlayerEntity extends LivingEntity {
     public static final EntitySize STANDING_SIZE = EntitySize.flexible(0.6F, 1.8F);
+    // Sneaking hitbox was 1.8 blocks tall until 1.8.x and 1.65 blocks tall from 1.9 to 1.13.2
+    private static final EntitySize LEGACY_CROUCHING_SIZE = EntitySize.flexible(0.6F, 1.65F);
     private static final Map<Pose, EntitySize> SIZE_BY_POSE = ImmutableMap.<Pose, EntitySize>builder().put(Pose.STANDING, STANDING_SIZE).put(Pose.SLEEPING, SLEEPING_SIZE).put(Pose.FALL_FLYING, EntitySize.flexible(0.6F, 0.6F)).put(Pose.SWIMMING, EntitySize.flexible(0.6F, 0.6F)).put(Pose.SPIN_ATTACK, EntitySize.flexible(0.6F, 0.6F)).put(Pose.CROUCHING, EntitySize.flexible(0.6F, 1.5F)).put(Pose.DYING, EntitySize.fixed(0.2F, 0.2F)).build();
     private static final DataParameter<Float> ABSORPTION = EntityDataManager.createKey(PlayerEntity.class, DataSerializers.FLOAT);
     private static final DataParameter<Integer> PLAYER_SCORE = EntityDataManager.createKey(PlayerEntity.class, DataSerializers.VARINT);
@@ -339,7 +341,10 @@ public abstract class PlayerEntity extends LivingEntity {
 
             Pose pose1;
 
-            if (!this.isSpectator() && !this.isPassenger() && !this.isPoseClear(pose)) {
+            if (JelloPortal.getVersion().olderThanOrEqualTo(ProtocolVersion.v1_13_2)) {
+                // Crawling doesn't exist before 1.14, the pose is never forced down to fit
+                pose1 = pose;
+            } else if (!this.isSpectator() && !this.isPassenger() && !this.isPoseClear(pose)) {
                 if (this.isPoseClear(Pose.CROUCHING)) {
                     pose1 = Pose.CROUCHING;
                 } else {
@@ -1106,7 +1111,17 @@ public abstract class PlayerEntity extends LivingEntity {
 
     private boolean isSpaceAroundPlayerEmpty(double offsetX, double offsetZ, float stepHeight) {
         AxisAlignedBB box = this.getBoundingBox();
-        return this.world.hasNoCollisions(this, new AxisAlignedBB(box.minX + offsetX, box.minY - (double) stepHeight - 1.0E-5F, box.minZ + offsetZ, box.maxX + offsetX, box.minY, box.maxZ + offsetZ));
+        // <=1.20.3 used no probe offset, 1.20.5-1.21.4 used 1.0E-5, 1.21.5+ folds it into stepHeight
+        double constant;
+        ProtocolVersion targetVersion = JelloPortal.getVersion();
+
+        if (targetVersion.olderThanOrEqualTo(ProtocolVersion.v1_20_3)) {
+            constant = 0.0D;
+        } else {
+            constant = 1.0E-5F;
+        }
+
+        return this.world.hasNoCollisions(this, new AxisAlignedBB(box.minX + offsetX, box.minY - (double) stepHeight - constant, box.minZ + offsetZ, box.maxX + offsetX, box.minY, box.maxZ + offsetZ));
     }
 
     /**
@@ -1487,8 +1502,21 @@ public abstract class PlayerEntity extends LivingEntity {
     }
 
     @Override
+    public boolean isOnLadder() {
+        // 1.21.4+ players don't climb ladders while flying
+        if (JelloPortal.getVersion().newerThan(ProtocolVersion.v1_21_2) && this.abilities.isFlying) {
+            return false;
+        }
+
+        return super.isOnLadder();
+    }
+
+    @Override
     protected float getOffGroundSpeed() {
-        if (PacketFixFor1_21Plus.shouldUseVanilla1_21MovementPhysics()) {
+        // 1.19.4+ evaluates the airborne speed live from the current sprint state
+        // instead of the jumpMovementFactor field updated at the end of the last tick
+        if (PacketFixFor1_21Plus.shouldUseVanilla1_21MovementPhysics()
+                || JelloPortal.getVersion().newerThanOrEqualTo(ProtocolVersion.v1_19_4)) {
             if (this.abilities.isFlying && !this.isPassenger()) {
                 return this.isSprinting() ? this.abilities.getFlySpeed() * 2.0F : this.abilities.getFlySpeed();
             }
@@ -1614,7 +1642,26 @@ public abstract class PlayerEntity extends LivingEntity {
     }
 
     public boolean tryToStartFallFlying() {
-        if (!this.onGround && !this.isElytraFlying() && !this.isInWater() && !this.isPotionActive(Effects.LEVITATION)) {
+        ProtocolVersion targetVersion = JelloPortal.getVersion();
+
+        // <=1.14.4 only requires falling, the water (1.15) and levitation (1.16) checks don't exist yet
+        if (targetVersion.olderThanOrEqualTo(ProtocolVersion.v1_14_4)) {
+            if (!this.onGround && this.getMotion().y < 0.0D && !this.isElytraFlying()) {
+                ItemStack legacyStack = this.getItemStackFromSlot(EquipmentSlotType.CHEST);
+
+                if (legacyStack.getItem() == Items.ELYTRA && ElytraItem.isUsable(legacyStack)) {
+                    this.startFallFlying();
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        boolean levitationBlocksGliding = targetVersion.newerThan(ProtocolVersion.v1_15_2)
+                && this.isPotionActive(Effects.LEVITATION);
+
+        if (!this.onGround && !this.isElytraFlying() && !this.isInWater() && !levitationBlocksGliding) {
             ItemStack itemstack = this.getItemStackFromSlot(EquipmentSlotType.CHEST);
 
             if (itemstack.getItem() == Items.ELYTRA && ElytraItem.isUsable(itemstack)) {
@@ -1953,7 +2000,7 @@ public abstract class PlayerEntity extends LivingEntity {
                 return 0.4F;
 
             case CROUCHING:
-                return 1.27F;
+                return JelloPortal.getVersion().olderThanOrEqualTo(ProtocolVersion.v1_13_2) ? 1.54F : 1.27F;
 
             default:
                 return 1.62F;
@@ -2136,6 +2183,17 @@ public abstract class PlayerEntity extends LivingEntity {
     }
 
     public EntitySize getSize(Pose poseIn) {
+        if (poseIn == Pose.CROUCHING) {
+            ProtocolVersion targetVersion = JelloPortal.getVersion();
+
+            if (targetVersion.olderThanOrEqualTo(ProtocolVersion.v1_8)) {
+                // Sneaking didn't change the hitbox before 1.9
+                return STANDING_SIZE;
+            } else if (targetVersion.olderThanOrEqualTo(ProtocolVersion.v1_13_2)) {
+                return LEGACY_CROUCHING_SIZE;
+            }
+        }
+
         return SIZE_BY_POSE.getOrDefault(poseIn, STANDING_SIZE);
     }
 

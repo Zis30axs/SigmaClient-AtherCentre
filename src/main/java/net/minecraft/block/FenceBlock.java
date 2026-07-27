@@ -24,12 +24,26 @@ import net.minecraft.world.World;
 public class FenceBlock extends FourWayBlock
 {
     private final VoxelShape[] renderShapes;
+    // <=1.12.2 fence outlines span the full block height with 4px wide arms
+    private final VoxelShape[] legacyOutlineShapes;
 
     public FenceBlock(AbstractBlock.Properties properties)
     {
         super(2.0F, 2.0F, 16.0F, 16.0F, 24.0F, properties);
         this.setDefaultState(this.stateContainer.getBaseState().with(NORTH, Boolean.valueOf(false)).with(EAST, Boolean.valueOf(false)).with(SOUTH, Boolean.valueOf(false)).with(WEST, Boolean.valueOf(false)).with(WATERLOGGED, Boolean.valueOf(false)));
         this.renderShapes = this.makeShapes(2.0F, 1.0F, 16.0F, 6.0F, 15.0F);
+        this.legacyOutlineShapes = this.makeShapes(2.0F, 2.0F, 16.0F, 0.0F, 16.0F);
+    }
+
+    public VoxelShape getShape(BlockState state, IBlockReader worldIn, BlockPos pos, ISelectionContext context)
+    {
+        if (com.mentalfrostbyte.jello.gui.base.JelloPortal.getVersion()
+                .olderThanOrEqualTo(com.viaversion.viaversion.api.protocol.version.ProtocolVersion.v1_12_2))
+        {
+            return this.legacyOutlineShapes[this.getIndex(state)];
+        }
+
+        return super.getShape(state, worldIn, pos, context);
     }
 
     public VoxelShape getRenderShape(BlockState state, IBlockReader worldIn, BlockPos pos)

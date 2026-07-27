@@ -1,5 +1,7 @@
 package net.minecraft.block;
 
+import com.mentalfrostbyte.jello.gui.base.JelloPortal;
+import com.viaversion.viaversion.api.protocol.version.ProtocolVersion;
 import net.minecraft.fluid.FluidState;
 import net.minecraft.fluid.Fluids;
 import net.minecraft.item.BlockItemUseContext;
@@ -15,10 +17,41 @@ import net.minecraft.world.IWorld;
 
 public class PaneBlock extends FourWayBlock
 {
+    protected static final VoxelShape LEGACY_UNCONNECTED_SHAPE = VoxelShapes.or(
+            Block.makeCuboidShape(7.0D, 0.0D, 0.0D, 9.0D, 16.0D, 16.0D),
+            Block.makeCuboidShape(0.0D, 0.0D, 7.0D, 16.0D, 16.0D, 9.0D));
+
     protected PaneBlock(AbstractBlock.Properties builder)
     {
         super(1.0F, 1.0F, 16.0F, 16.0F, 16.0F, builder);
         this.setDefaultState(this.stateContainer.getBaseState().with(NORTH, Boolean.valueOf(false)).with(EAST, Boolean.valueOf(false)).with(SOUTH, Boolean.valueOf(false)).with(WEST, Boolean.valueOf(false)).with(WATERLOGGED, Boolean.valueOf(false)));
+    }
+
+    public VoxelShape getShape(BlockState state, IBlockReader worldIn, BlockPos pos, ISelectionContext context)
+    {
+        if (this.useLegacyUnconnectedShape(state))
+        {
+            return LEGACY_UNCONNECTED_SHAPE;
+        }
+
+        return super.getShape(state, worldIn, pos, context);
+    }
+
+    public VoxelShape getCollisionShape(BlockState state, IBlockReader worldIn, BlockPos pos, ISelectionContext context)
+    {
+        if (this.useLegacyUnconnectedShape(state))
+        {
+            return LEGACY_UNCONNECTED_SHAPE;
+        }
+
+        return super.getCollisionShape(state, worldIn, pos, context);
+    }
+
+    private boolean useLegacyUnconnectedShape(BlockState state)
+    {
+        // 1.8 panes without any connection collide as a full-length cross
+        return JelloPortal.getVersion().olderThanOrEqualTo(ProtocolVersion.v1_8)
+                && !state.get(NORTH) && !state.get(SOUTH) && !state.get(WEST) && !state.get(EAST);
     }
 
     public BlockState getStateForPlacement(BlockItemUseContext context)

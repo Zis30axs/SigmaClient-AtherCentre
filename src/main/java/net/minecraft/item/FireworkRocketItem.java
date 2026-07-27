@@ -50,7 +50,10 @@ public class FireworkRocketItem extends Item
 
     public ActionResult<ItemStack> onItemRightClick(World worldIn, PlayerEntity playerIn, Hand handIn)
     {
-        if (playerIn.isElytraFlying())
+        // firework elytra boosting only exists since 1.11.1
+        if (com.mentalfrostbyte.jello.gui.base.JelloPortal.getVersion()
+                .newerThan(com.viaversion.viaversion.api.protocol.version.ProtocolVersion.v1_11)
+                && playerIn.isElytraFlying())
         {
             ItemStack itemstack = playerIn.getHeldItem(handIn);
 

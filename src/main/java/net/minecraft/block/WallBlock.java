@@ -2,6 +2,8 @@ package net.minecraft.block;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableMap.Builder;
+import com.mentalfrostbyte.jello.gui.base.JelloPortal;
+import com.viaversion.viaversion.api.protocol.version.ProtocolVersion;
 import java.util.Map;
 import net.minecraft.fluid.FluidState;
 import net.minecraft.fluid.Fluids;
@@ -35,6 +37,9 @@ public class WallBlock extends Block implements IWaterLoggable
     public static final BooleanProperty WATERLOGGED = BlockStateProperties.WATERLOGGED;
     private final Map<BlockState, VoxelShape> stateToShapeMap;
     private final Map<BlockState, VoxelShape> stateToCollisionShapeMap;
+    // <=1.12.2 walls use a 8px pole with 10px arms and no tall/low variants
+    private final VoxelShape[] legacyOutlineShapes;
+    private final VoxelShape[] legacyCollisionShapes;
     private static final VoxelShape CENTER_POLE_SHAPE = Block.makeCuboidShape(7.0D, 0.0D, 7.0D, 9.0D, 16.0D, 9.0D);
     private static final VoxelShape WALL_CONNECTION_NORTH_SIDE_SHAPE = Block.makeCuboidShape(7.0D, 0.0D, 0.0D, 9.0D, 16.0D, 9.0D);
     private static final VoxelShape WALL_CONNECTION_SOUTH_SIDE_SHAPE = Block.makeCuboidShape(7.0D, 0.0D, 7.0D, 9.0D, 16.0D, 16.0D);
@@ -47,6 +52,111 @@ public class WallBlock extends Block implements IWaterLoggable
         this.setDefaultState(this.stateContainer.getBaseState().with(UP, Boolean.valueOf(true)).with(WALL_HEIGHT_NORTH, WallHeight.NONE).with(WALL_HEIGHT_EAST, WallHeight.NONE).with(WALL_HEIGHT_SOUTH, WallHeight.NONE).with(WALL_HEIGHT_WEST, WallHeight.NONE).with(WATERLOGGED, Boolean.valueOf(false)));
         this.stateToShapeMap = this.makeShapes(4.0F, 3.0F, 16.0F, 0.0F, 14.0F, 16.0F);
         this.stateToCollisionShapeMap = this.makeShapes(4.0F, 3.0F, 24.0F, 0.0F, 24.0F, 24.0F);
+        this.legacyOutlineShapes = makeLegacyShapes(16.0F, 14.0F);
+        this.legacyCollisionShapes = makeLegacyShapes(24.0F, 24.0F);
+    }
+
+    private static VoxelShape[] makeLegacyShapes(float height1, float height2)
+    {
+        float f = 4.0F;
+        float g = 12.0F;
+        float h = 5.0F;
+        float i = 11.0F;
+        VoxelShape baseShape = Block.makeCuboidShape(f, 0.0D, f, g, height1, g);
+        VoxelShape northShape = Block.makeCuboidShape(h, 0.0D, 0.0D, i, height2, i);
+        VoxelShape southShape = Block.makeCuboidShape(h, 0.0D, h, i, height2, 16.0D);
+        VoxelShape westShape = Block.makeCuboidShape(0.0D, 0.0D, h, i, height2, i);
+        VoxelShape eastShape = Block.makeCuboidShape(h, 0.0D, h, 16.0D, height2, i);
+        VoxelShape[] shapes = new VoxelShape[]
+        {
+            VoxelShapes.empty(),
+            Block.makeCuboidShape(f, 0.0D, h, g, height1, 16.0D),
+            Block.makeCuboidShape(0.0D, 0.0D, f, i, height1, g),
+            Block.makeCuboidShape(f - 4.0F, 0.0D, h - 1.0F, g, height1, 16.0D),
+            Block.makeCuboidShape(f, 0.0D, 0.0D, g, height1, i),
+            VoxelShapes.or(southShape, northShape),
+            Block.makeCuboidShape(f - 4.0F, 0.0D, 0.0D, g, height1, i + 1.0F),
+            Block.makeCuboidShape(f - 4.0F, 0.0D, h - 5.0F, g, height1, 16.0D),
+            Block.makeCuboidShape(h, 0.0D, f, 16.0D, height1, g),
+            Block.makeCuboidShape(h - 1.0F, 0.0D, f, 16.0D, height1, g + 4.0F),
+            VoxelShapes.or(westShape, eastShape),
+            Block.makeCuboidShape(h - 5.0F, 0.0D, f, 16.0D, height1, g + 4.0F),
+            Block.makeCuboidShape(f, 0.0D, 0.0D, g + 4.0F, height1, i + 1.0F),
+            Block.makeCuboidShape(f, 0.0D, 0.0D, g + 4.0F, height1, i + 5.0F),
+            Block.makeCuboidShape(h - 5.0F, 0.0D, f - 4.0F, 16.0D, height1, g),
+            Block.makeCuboidShape(0.0D, 0.0D, 0.0D, 16.0D, height1, 16.0D)
+        };
+
+        for (int j = 0; j < 16; ++j)
+        {
+            shapes[j] = VoxelShapes.or(baseShape, shapes[j]);
+        }
+
+        return shapes;
+    }
+
+    private static int getLegacyShapeIndex(BlockState state)
+    {
+        int i = 0;
+
+        if (state.get(WALL_HEIGHT_NORTH) != WallHeight.NONE)
+        {
+            i |= 1 << Direction.NORTH.getHorizontalIndex();
+        }
+
+        if (state.get(WALL_HEIGHT_EAST) != WallHeight.NONE)
+        {
+            i |= 1 << Direction.EAST.getHorizontalIndex();
+        }
+
+        if (state.get(WALL_HEIGHT_SOUTH) != WallHeight.NONE)
+        {
+            i |= 1 << Direction.SOUTH.getHorizontalIndex();
+        }
+
+        if (state.get(WALL_HEIGHT_WEST) != WallHeight.NONE)
+        {
+            i |= 1 << Direction.WEST.getHorizontalIndex();
+        }
+
+        return i;
+    }
+
+    private static BlockState applyLegacyWallPlacement(BlockState state)
+    {
+        // 1.16 introduced tall/low wall sides, older versions only know the up pole
+        boolean addUp = false;
+
+        if (state.get(WALL_HEIGHT_NORTH) == WallHeight.TALL)
+        {
+            state = state.with(WALL_HEIGHT_NORTH, WallHeight.LOW);
+            addUp = true;
+        }
+
+        if (state.get(WALL_HEIGHT_EAST) == WallHeight.TALL)
+        {
+            state = state.with(WALL_HEIGHT_EAST, WallHeight.LOW);
+            addUp = true;
+        }
+
+        if (state.get(WALL_HEIGHT_SOUTH) == WallHeight.TALL)
+        {
+            state = state.with(WALL_HEIGHT_SOUTH, WallHeight.LOW);
+            addUp = true;
+        }
+
+        if (state.get(WALL_HEIGHT_WEST) == WallHeight.TALL)
+        {
+            state = state.with(WALL_HEIGHT_WEST, WallHeight.LOW);
+            addUp = true;
+        }
+
+        if (addUp)
+        {
+            state = state.with(UP, Boolean.valueOf(true));
+        }
+
+        return state;
     }
 
     private static VoxelShape getHeightAlteredShape(VoxelShape baseShape, WallHeight height, VoxelShape lowShape, VoxelShape tallShape)
@@ -113,11 +223,21 @@ public class WallBlock extends Block implements IWaterLoggable
 
     public VoxelShape getShape(BlockState state, IBlockReader worldIn, BlockPos pos, ISelectionContext context)
     {
+        if (state.get(UP) && JelloPortal.getVersion().olderThanOrEqualTo(ProtocolVersion.v1_12_2))
+        {
+            return this.legacyOutlineShapes[getLegacyShapeIndex(state)];
+        }
+
         return this.stateToShapeMap.get(state);
     }
 
     public VoxelShape getCollisionShape(BlockState state, IBlockReader worldIn, BlockPos pos, ISelectionContext context)
     {
+        if (state.get(UP) && JelloPortal.getVersion().olderThanOrEqualTo(ProtocolVersion.v1_12_2))
+        {
+            return this.legacyCollisionShapes[getLegacyShapeIndex(state)];
+        }
+
         return this.stateToCollisionShapeMap.get(state);
     }
 
@@ -153,7 +273,12 @@ public class WallBlock extends Block implements IWaterLoggable
         boolean flag2 = this.shouldConnect(blockstate2, blockstate2.isSolidSide(iworldreader, blockpos3, Direction.NORTH), Direction.NORTH);
         boolean flag3 = this.shouldConnect(blockstate3, blockstate3.isSolidSide(iworldreader, blockpos4, Direction.EAST), Direction.EAST);
         BlockState blockstate5 = this.getDefaultState().with(WATERLOGGED, Boolean.valueOf(fluidstate.getFluid() == Fluids.WATER));
-        return this.func_235626_a_(iworldreader, blockstate5, blockpos5, blockstate4, flag, flag1, flag2, flag3);
+        BlockState placementState = this.func_235626_a_(iworldreader, blockstate5, blockpos5, blockstate4, flag, flag1, flag2, flag3);
+
+        // <=1.15.2 walls don't know tall sides and always keep the center pole
+        return JelloPortal.getVersion().olderThanOrEqualTo(ProtocolVersion.v1_15_2)
+                ? applyLegacyWallPlacement(placementState)
+                : placementState;
     }
 
     /**
@@ -175,7 +300,10 @@ public class WallBlock extends Block implements IWaterLoggable
         }
         else
         {
-            return facing == Direction.UP ? this.func_235625_a_(worldIn, stateIn, facingPos, facingState) : this.func_235627_a_(worldIn, currentPos, stateIn, facingPos, facingState, facing);
+            BlockState updatedState = facing == Direction.UP ? this.func_235625_a_(worldIn, stateIn, facingPos, facingState) : this.func_235627_a_(worldIn, currentPos, stateIn, facingPos, facingState, facing);
+            return JelloPortal.getVersion().olderThanOrEqualTo(ProtocolVersion.v1_15_2)
+                    ? applyLegacyWallPlacement(updatedState)
+                    : updatedState;
         }
     }
 

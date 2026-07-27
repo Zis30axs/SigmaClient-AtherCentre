@@ -810,6 +810,21 @@ public class ClientPlayerEntity extends AbstractClientPlayerEntity {
                 : !this.abilities.isFlying && !this.isSwimming() && this.isPoseClear(Pose.CROUCHING)
                         && (this.isSneaking() || !this.isSleeping() && !this.isPoseClear(Pose.STANDING));
         this.movementInput.tickMovement(this.isForcedDown());
+
+        // 1.9 - 1.14.4 undoes the sneak slowdown while flying
+        if (targetVersion.newerThanOrEqualTo(ProtocolVersion.v1_9)
+                && targetVersion.olderThanOrEqualTo(ProtocolVersion.v1_14_4)
+                && this.abilities.isFlying && this.isCurrentViewEntity()
+                && this.movementInput.sneaking && this.isForcedDown()) {
+            this.movementInput.moveStrafe = (float) ((double) this.movementInput.moveStrafe / 0.3D);
+            this.movementInput.moveForward = (float) ((double) this.movementInput.moveForward / 0.3D);
+        }
+
+        // 1.21.5+ resets the double-tap sprint timer when moving backwards
+        if (targetVersion.newerThan(ProtocolVersion.v1_21_4) && this.movementInput.backKeyDown) {
+            this.sprintToggleTimer = 0;
+        }
+
         boolean vanillaMovement = PacketFixFor1_21Plus.shouldUseGrimVanillaMovement();
 
         if (this.isHandActive() && !this.isPassenger()) {
@@ -848,7 +863,13 @@ public class ClientPlayerEntity extends AbstractClientPlayerEntity {
                     this.getPosZ() + (double) this.getWidth() * 0.35D);
         }
 
-        boolean flag4 = (float) this.getFoodStats().getFoodLevel() > 6.0F || this.abilities.allowFlying;
+        // 1.19.3+ exempts passengers from the hunger requirement
+        boolean flag4 = (float) this.getFoodStats().getFoodLevel() > 6.0F || this.abilities.allowFlying
+                || targetVersion.newerThan(ProtocolVersion.v1_19_1) && this.isPassenger();
+        // 1.19.4+ blocks starting a sprint while riding (unless the vehicle can sprint,
+        // which no rideable entity of this codebase can) or while gliding above water
+        boolean sprintStartRestricted = targetVersion.newerThan(ProtocolVersion.v1_19_3)
+                && (this.isPassenger() || this.isElytraFlying() && !this.canSwim());
 
         EventSprint eventSprint = null;
         if (!vanillaMovement) {
@@ -864,7 +885,8 @@ public class ClientPlayerEntity extends AbstractClientPlayerEntity {
         }
 
         if ((this.onGround || this.canSwim()) && !flag1 && !flag2 && this.isUsingSwimmingAnimation()
-                && !this.isSprinting() && flag4 && !this.isHandActive() && !this.isPotionActive(Effects.BLINDNESS)) {
+                && !this.isSprinting() && flag4 && !this.isHandActive() && !this.isPotionActive(Effects.BLINDNESS)
+                && !sprintStartRestricted) {
             if (this.sprintToggleTimer <= 0 && !this.mc.gameSettings.keyBindSprint.isKeyDown()) {
                 this.sprintToggleTimer = 7;
             } else {
@@ -872,23 +894,45 @@ public class ClientPlayerEntity extends AbstractClientPlayerEntity {
             }
         }
 
+        // 1.21.10+ allows sprinting in shallow water
         boolean canWaterSprint = targetVersion.olderThanOrEqualTo(ProtocolVersion.v1_12_2)
+                || targetVersion.newerThan(ProtocolVersion.v1_21_9)
                 || !this.isInWater() || this.canSwim();
 
         if (!this.isSprinting() && canWaterSprint && this.isUsingSwimmingAnimation() && flag4
                 && !this.isHandActive() && !this.isPotionActive(Effects.BLINDNESS)
+                && !sprintStartRestricted
                 && this.mc.gameSettings.keyBindSprint.isKeyDown()) {
             this.setSprinting(true);
         }
 
         if (this.isSprinting()) {
-            boolean flag5 = !this.movementInput.isMovingForward() || !flag4;
+            // <=1.14.1 cancels sprint whenever the forward input drops below 0.8
+            // (sneaking x0.3 / item use x0.2), 1.14.2+ only when there is no input at all
+            boolean noForwardImpulse = targetVersion.olderThanOrEqualTo(ProtocolVersion.v1_14_1)
+                    ? !(this.movementInput.moveForward >= 0.8F)
+                    : !this.movementInput.isMovingForward();
+            boolean flag5 = noForwardImpulse || !flag4;
             boolean hardHorizontalCollision = targetVersion.newerThan(ProtocolVersion.v1_17_1)
                     ? this.collidedHorizontally && !this.minorHorizontalCollision
                     : this.collidedHorizontally;
             boolean flag6 = flag5 || hardHorizontalCollision || !canWaterSprint;
 
-            if (targetVersion.olderThanOrEqualTo(ProtocolVersion.v1_14_1)
+            if (targetVersion.newerThan(ProtocolVersion.v1_21_4)) {
+                // 1.21.5+ split and reworked the stop conditions: blindness and riding
+                // now stop the sprint, item use no longer does
+                boolean blindness = this.isPotionActive(Effects.BLINDNESS);
+
+                if (this.isSwimming()) {
+                    if (blindness || this.isPassenger() || !this.isInWater()
+                            || noForwardImpulse && !this.onGround && !this.movementInput.sneaking || !flag4) {
+                        this.setSprinting(false);
+                    }
+                } else if (blindness || this.isPassenger() || noForwardImpulse || !flag4
+                        || hardHorizontalCollision || !canWaterSprint) {
+                    this.setSprinting(false);
+                }
+            } else if (targetVersion.olderThanOrEqualTo(ProtocolVersion.v1_14_1)
                     && this.movementInput.sneaking) {
                 this.setSprinting(false);
             } else if (this.isSwimming()) {
@@ -926,7 +970,7 @@ public class ClientPlayerEntity extends AbstractClientPlayerEntity {
         }
 
         if (this.movementInput.jump && !flag7 && !flag && !this.abilities.isFlying && !this.isPassenger()
-                && !this.isOnLadder()) {
+                && (targetVersion.olderThanOrEqualTo(ProtocolVersion.v1_15_1) || !this.isOnLadder())) {
             ItemStack itemstack = this.getItemStackFromSlot(EquipmentSlotType.CHEST);
 
             if (itemstack.getItem() == Items.ELYTRA && ElytraItem.isUsable(itemstack) && this.tryToStartFallFlying()) {
@@ -1269,7 +1313,11 @@ public class ClientPlayerEntity extends AbstractClientPlayerEntity {
 
     private boolean isUsingSwimmingAnimation() {
         double d0 = 0.8D;
-        return this.canSwim() ? this.movementInput.isMovingForward() : (double) this.movementInput.moveForward >= 0.8D;
+        // <=1.14.1 always requires the full 0.8 forward input, even under water
+        boolean useImpulseThreshold = JelloPortal.getVersion().newerThan(ProtocolVersion.v1_14_1)
+                && this.canSwim();
+        return useImpulseThreshold ? this.movementInput.isMovingForward()
+                : (double) this.movementInput.moveForward >= 0.8D;
     }
 
     public float getWaterBrightness() {

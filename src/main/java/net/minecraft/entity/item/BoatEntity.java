@@ -1,11 +1,14 @@
 package net.minecraft.entity.item;
 
+import com.mentalfrostbyte.jello.gui.base.JelloPortal;
+import com.viaversion.viaversion.api.protocol.version.ProtocolVersion;
 import java.util.List;
 import javax.annotation.Nullable;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
 import net.minecraft.block.LilyPadBlock;
+import net.minecraft.block.material.Material;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntitySize;
 import net.minecraft.entity.EntityType;
@@ -57,6 +60,7 @@ public class BoatEntity extends Entity
     private static final DataParameter<Integer> ROCKING_TICKS = EntityDataManager.createKey(BoatEntity.class, DataSerializers.VARINT);
     private final float[] paddlePositions = new float[2];
     private float momentum;
+    private float legacySpeedMultiplier = 0.07F;
     private float outOfControlTicks;
     private float deltaRotation;
     private int lerpSteps;
@@ -334,15 +338,27 @@ public class BoatEntity extends Entity
                 this.setPaddleState(false, false);
             }
 
-            this.updateMotion();
-
-            if (this.world.isRemote)
+            if (JelloPortal.getVersion().olderThanOrEqualTo(ProtocolVersion.v1_8))
             {
-                this.controlBoat();
-                this.world.sendPacketToServer(new CSteerBoatPacket(this.getPaddleState(0), this.getPaddleState(1)));
-            }
+                this.tickLegacyBoatMovement();
 
-            this.move(MoverType.SELF, this.getMotion());
+                if (this.world.isRemote)
+                {
+                    this.world.sendPacketToServer(new CSteerBoatPacket(this.getPaddleState(0), this.getPaddleState(1)));
+                }
+            }
+            else
+            {
+                this.updateMotion();
+
+                if (this.world.isRemote)
+                {
+                    this.controlBoat();
+                    this.world.sendPacketToServer(new CSteerBoatPacket(this.getPaddleState(0), this.getPaddleState(1)));
+                }
+
+                this.move(MoverType.SELF, this.getMotion());
+            }
         }
         else
         {
@@ -769,6 +785,128 @@ public class BoatEntity extends Entity
                 this.setMotion(vector3d1.x, (vector3d1.y + d2 * 0.06153846016296973D) * 0.75D, vector3d1.z);
             }
         }
+    }
+
+    /**
+     * Re-implementation of the 1.8 rider-driven boat physics (EntityBoat#onUpdate).
+     * 1.9 replaced it with the paddle model, so boats on 1.8 servers move and feel
+     * completely wrong without this.
+     */
+    private void tickLegacyBoatMovement()
+    {
+        double submerged = 0.0D;
+
+        for (int i = 0; i < 5; ++i)
+        {
+            double d0 = this.getBoundingBox().minY + (double)this.getHeight() * (double)i / 5.0D - 0.125D;
+            double d1 = this.getBoundingBox().minY + (double)this.getHeight() * (double)(i + 1) / 5.0D - 0.125D;
+            AxisAlignedBB axisalignedbb = new AxisAlignedBB(this.getBoundingBox().minX, d0, this.getBoundingBox().minZ, this.getBoundingBox().maxX, d1, this.getBoundingBox().maxZ);
+
+            if (this.world.isMaterialInBB(axisalignedbb, Material.WATER))
+            {
+                submerged += 0.2D;
+            }
+        }
+
+        Vector3d vector3d = this.getMotion();
+        double previousSpeed = Math.sqrt(horizontalMag(vector3d));
+        double motionX = vector3d.x;
+        double motionY = vector3d.y;
+        double motionZ = vector3d.z;
+
+        if (submerged < 1.0D)
+        {
+            motionY += 0.04D * (submerged * 2.0D - 1.0D);
+        }
+        else
+        {
+            if (motionY < 0.0D)
+            {
+                motionY /= 2.0D;
+            }
+
+            motionY += 0.007D;
+        }
+
+        Entity entity = this.getControllingPassenger();
+
+        if (entity instanceof LivingEntity)
+        {
+            LivingEntity rider = (LivingEntity)entity;
+            float f = rider.rotationYaw + -rider.moveStrafing * 90.0F;
+            motionX += (double)(-MathHelper.sin(f * ((float)Math.PI / 180F))) * (double)this.legacySpeedMultiplier * (double)rider.moveForward * 0.05D;
+            motionZ += (double)MathHelper.cos(f * ((float)Math.PI / 180F)) * (double)this.legacySpeedMultiplier * (double)rider.moveForward * 0.05D;
+            this.setPaddleState(rider.moveForward != 0.0F, rider.moveForward != 0.0F);
+        }
+
+        double newSpeed = Math.sqrt(motionX * motionX + motionZ * motionZ);
+
+        if (newSpeed > 0.35D)
+        {
+            double d2 = 0.35D / newSpeed;
+            motionX *= d2;
+            motionZ *= d2;
+            newSpeed = 0.35D;
+        }
+
+        if (newSpeed > previousSpeed && this.legacySpeedMultiplier < 0.35F)
+        {
+            this.legacySpeedMultiplier += (0.35F - this.legacySpeedMultiplier) / 35.0F;
+
+            if (this.legacySpeedMultiplier > 0.35F)
+            {
+                this.legacySpeedMultiplier = 0.35F;
+            }
+        }
+        else
+        {
+            this.legacySpeedMultiplier -= (this.legacySpeedMultiplier - 0.07F) / 35.0F;
+
+            if (this.legacySpeedMultiplier < 0.07F)
+            {
+                this.legacySpeedMultiplier = 0.07F;
+            }
+        }
+
+        if (this.onGround)
+        {
+            motionX *= 0.5D;
+            motionY *= 0.5D;
+            motionZ *= 0.5D;
+        }
+
+        this.setMotion(motionX, motionY, motionZ);
+        this.move(MoverType.SELF, this.getMotion());
+
+        if (!this.collidedHorizontally || !(previousSpeed > 0.2975D))
+        {
+            this.setMotion(this.getMotion().mul(0.99D, 0.95D, 0.99D));
+        }
+
+        this.rotationPitch = 0.0F;
+        double newYaw = (double)this.rotationYaw;
+        double deltaX = this.prevPosX - this.getPosX();
+        double deltaZ = this.prevPosZ - this.getPosZ();
+
+        if (deltaX * deltaX + deltaZ * deltaZ > 0.001D)
+        {
+            newYaw = (double)((float)(MathHelper.atan2(deltaZ, deltaX) * (double)(180F / (float)Math.PI)));
+        }
+
+        double yawChange = MathHelper.wrapDegrees(newYaw - (double)this.rotationYaw);
+
+        if (yawChange > 20.0D)
+        {
+            yawChange = 20.0D;
+        }
+
+        if (yawChange < -20.0D)
+        {
+            yawChange = -20.0D;
+        }
+
+        this.rotationYaw = (float)((double)this.rotationYaw + yawChange);
+        this.setRotation(this.rotationYaw, this.rotationPitch);
     }
 
     private void controlBoat()

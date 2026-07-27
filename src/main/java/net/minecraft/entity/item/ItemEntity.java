@@ -193,6 +193,13 @@ public class ItemEntity extends Entity
 
     private void applyFloatMotion()
     {
+        // dropped items only float on water since 1.13
+        if (com.mentalfrostbyte.jello.gui.base.JelloPortal.getVersion()
+                .olderThanOrEqualTo(com.viaversion.viaversion.api.protocol.version.ProtocolVersion.v1_12_2))
+        {
+            return;
+        }
+
         Vector3d vector3d = this.getMotion();
         this.setMotion(vector3d.x * (double)0.99F, vector3d.y + (double)(vector3d.y < (double)0.06F ? 5.0E-4F : 0.0F), vector3d.z * (double)0.99F);
     }

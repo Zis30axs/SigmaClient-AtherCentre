@@ -365,6 +365,17 @@ public abstract class Entity implements INameable, ICommandSource {
      * Sets the rotation of the entity.
      */
     protected void setRotation(float yaw, float pitch) {
+        final ProtocolVersion targetVersion = ViaLoadingBase.getInstance().getTargetVersion();
+
+        // 1.17+ rejects non-finite rotations, 1.21.2+ clamps the pitch to +-90
+        if (targetVersion.newerThan(ProtocolVersion.v1_16_4) && (!Float.isFinite(yaw) || !Float.isFinite(pitch))) {
+            return;
+        }
+
+        if (targetVersion.newerThan(ProtocolVersion.v1_21)) {
+            pitch = MathHelper.clamp(pitch, -90.0F, 90.0F);
+        }
+
         this.rotationYaw = yaw % 360.0F;
         this.rotationPitch = pitch % 360.0F;
     }
@@ -606,8 +617,9 @@ public abstract class Entity implements INameable, ICommandSource {
             pos = this.maybeBackOffFromEdge(pos, typeIn);
             Vector3d vector3d = this.getAllowedMovement(pos);
             double allowedLengthSquared = vector3d.lengthSquared();
-            boolean modernSmallMovement = PacketFixFor1_21Plus.isEnabled()
-                    && PacketFixFor1_21Plus.isTargetAtLeast1_21_3Protocol()
+            // 1.21.2+ also applies tiny movements when the collision adjustment is small
+            boolean modernSmallMovement = ViaLoadingBase.getInstance().getTargetVersion()
+                    .newerThan(ProtocolVersion.v1_21)
                     && pos.lengthSquared() - allowedLengthSquared < 1.0E-7D;
 
             if (allowedLengthSquared > 1.0E-7D || modernSmallMovement) {
@@ -756,7 +768,68 @@ public abstract class Entity implements INameable, ICommandSource {
     }
 
     protected BlockPos getPositionUnderneath() {
+        final ProtocolVersion targetVersion = ViaLoadingBase.getInstance().getTargetVersion();
+
+        // 1.15+ samples friction/velocity-affecting block at minY - 0.5000001,
+        // 1.14.4 and older used floor(minY) - 1 (matters on partial blocks like soul sand)
+        if (targetVersion.olderThanOrEqualTo(ProtocolVersion.v1_14_4)) {
+            return new BlockPos(this.positionVec.x, this.getBoundingBox().minY - 1.0D, this.positionVec.z);
+        }
+
+        // 1.20+ samples the block that actually supports the entity instead of the
+        // block under its center (matters when standing on block edges and fences)
+        if (targetVersion.newerThanOrEqualTo(ProtocolVersion.v1_20) && this.onGround) {
+            BlockPos supportingPos = this.findSupportingBlockPos();
+
+            if (supportingPos != null) {
+                return supportingPos;
+            }
+        }
+
         return new BlockPos(this.positionVec.x, this.getBoundingBox().minY - 0.5000001D, this.positionVec.z);
+    }
+
+    @Nullable
+    private BlockPos findSupportingBlockPos() {
+        AxisAlignedBB axisalignedbb = this.getBoundingBox().offset(0.0D, -1.0E-6D, 0.0D);
+        VoxelShape searchShape = VoxelShapes.create(axisalignedbb);
+        BlockPos supportingPos = null;
+        double closestDistance = Double.MAX_VALUE;
+        int minX = MathHelper.floor(axisalignedbb.minX);
+        int maxX = MathHelper.floor(axisalignedbb.maxX);
+        int minZ = MathHelper.floor(axisalignedbb.minZ);
+        int maxZ = MathHelper.floor(axisalignedbb.maxZ);
+        int topY = MathHelper.floor(axisalignedbb.minY);
+
+        // tall shapes like fences and walls can support the entity from the cell below
+        for (int y = topY; y >= topY - 1; --y) {
+            for (int x = minX; x <= maxX; ++x) {
+                for (int z = minZ; z <= maxZ; ++z) {
+                    BlockPos blockpos = new BlockPos(x, y, z);
+                    BlockState blockstate = this.world.getBlockState(blockpos);
+
+                    if (blockstate.isAir()) {
+                        continue;
+                    }
+
+                    VoxelShape voxelshape = blockstate.getCollisionShape(this.world, blockpos, ISelectionContext.forEntity(this));
+
+                    if (voxelshape.isEmpty()
+                            || !VoxelShapes.compare(voxelshape.withOffset(x, y, z), searchShape, IBooleanFunction.AND)) {
+                        continue;
+                    }
+
+                    double distance = blockpos.distanceSq(this.positionVec, true);
+
+                    if (distance < closestDistance) {
+                        closestDistance = distance;
+                        supportingPos = blockpos;
+                    }
+                }
+            }
+        }
+
+        return supportingPos;
     }
 
     protected Vector3d maybeBackOffFromEdge(Vector3d vec, MoverType mover) {
@@ -821,6 +894,21 @@ public abstract class Entity implements INameable, ICommandSource {
         boolean flag3 = this.onGround || flag1 && vec.y < 0.0D;
 
         if (this.stepHeight > 0.0F && flag3 && (flag || flag2)) {
+            final ProtocolVersion stepTargetVersion = ViaLoadingBase.getInstance().getTargetVersion();
+
+            // 1.20.5 rewrote step-up: every candidate height collected from nearby
+            // collision shapes is tried instead of only the full step height
+            if (stepTargetVersion.newerThanOrEqualTo(ProtocolVersion.v1_20_5)) {
+                return this.getAllowedMovementModernStep(vec, vector3d, axisalignedbb, iselectioncontext,
+                        reuseablestream);
+            }
+
+            // <=1.13.2 uses the 1.8 dual-variant step (raise first, then move each
+            // axis) which behaves differently in inner corners
+            if (stepTargetVersion.olderThanOrEqualTo(ProtocolVersion.v1_13_2)) {
+                return this.getAllowedMovementLegacyStep(vec, vector3d, axisalignedbb, reuseablestream);
+            }
+
             Vector3d vector3d1 = collideBoundingBoxHeuristically(this,
                     new Vector3d(vec.x, (double) this.stepHeight, vec.z), axisalignedbb, this.world, iselectioncontext,
                     reuseablestream);
@@ -864,6 +952,139 @@ public abstract class Entity implements INameable, ICommandSource {
         }
 
         return vector3d;
+    }
+
+    /**
+     * <=1.13.2 step-up (from 1.8 Entity#moveEntity): raise the box first (two
+     * variants), then collide X and Z separately, then settle back down.
+     */
+    private Vector3d getAllowedMovementLegacyStep(Vector3d vec, Vector3d adjusted, AxisAlignedBB box,
+            ReuseableStream<VoxelShape> potentialHits) {
+        // variant 1: the upwards offset is limited by the horizontally extended box
+        double up1 = VoxelShapes.getAllowedOffset(Direction.Axis.Y, box.expand(vec.x, 0.0D, vec.z),
+                potentialHits.createStream(), (double) this.stepHeight);
+        AxisAlignedBB raised1 = box.offset(0.0D, up1, 0.0D);
+        double x1 = VoxelShapes.getAllowedOffset(Direction.Axis.X, raised1, potentialHits.createStream(), vec.x);
+        raised1 = raised1.offset(x1, 0.0D, 0.0D);
+        double z1 = VoxelShapes.getAllowedOffset(Direction.Axis.Z, raised1, potentialHits.createStream(), vec.z);
+        raised1 = raised1.offset(0.0D, 0.0D, z1);
+
+        // variant 2: the upwards offset is limited by the plain box
+        double up2 = VoxelShapes.getAllowedOffset(Direction.Axis.Y, box, potentialHits.createStream(),
+                (double) this.stepHeight);
+        AxisAlignedBB raised2 = box.offset(0.0D, up2, 0.0D);
+        double x2 = VoxelShapes.getAllowedOffset(Direction.Axis.X, raised2, potentialHits.createStream(), vec.x);
+        raised2 = raised2.offset(x2, 0.0D, 0.0D);
+        double z2 = VoxelShapes.getAllowedOffset(Direction.Axis.Z, raised2, potentialHits.createStream(), vec.z);
+        raised2 = raised2.offset(0.0D, 0.0D, z2);
+
+        double stepX;
+        double stepZ;
+        double stepUp;
+        AxisAlignedBB steppedBox;
+
+        if (x1 * x1 + z1 * z1 > x2 * x2 + z2 * z2) {
+            stepX = x1;
+            stepZ = z1;
+            stepUp = up1;
+            steppedBox = raised1;
+        } else {
+            stepX = x2;
+            stepZ = z2;
+            stepUp = up2;
+            steppedBox = raised2;
+        }
+
+        double stepDown = VoxelShapes.getAllowedOffset(Direction.Axis.Y, steppedBox, potentialHits.createStream(),
+                -stepUp);
+        double stepY = stepUp + stepDown;
+
+        // MODIFICATION: keep the EventStep hook working on the legacy path
+        if (!PacketFixFor1_21Plus.shouldUseGrimVanillaMovement() && this instanceof ClientPlayerEntity
+                && stepY != 0.0D) {
+            EventStep event = new EventStep(stepY, adjusted);
+            EventBus.call(event);
+
+            if (event.cancelled) {
+                return adjusted;
+            }
+        }
+
+        if (stepX * stepX + stepZ * stepZ > horizontalMag(adjusted)) {
+            return new Vector3d(stepX, stepY, stepZ);
+        }
+
+        return adjusted;
+    }
+
+    /**
+     * 1.21+ step-up algorithm: collect every collision edge between the feet and
+     * the step height and try them from lowest to highest.
+     */
+    private Vector3d getAllowedMovementModernStep(Vector3d vec, Vector3d adjusted, AxisAlignedBB box,
+            ISelectionContext context, ReuseableStream<VoxelShape> potentialHits) {
+        AxisAlignedBB steppedBox = this.onGround ? box.offset(0.0D, adjusted.y, 0.0D) : box;
+        AxisAlignedBB searchBox = steppedBox.expand(vec.x, (double) this.stepHeight, vec.z);
+
+        if (!this.onGround) {
+            searchBox = searchBox.expand(0.0D, -1.0E-5D, 0.0D);
+        }
+
+        ReuseableStream<VoxelShape> stepHits = new ReuseableStream<>(Stream.concat(potentialHits.createStream(),
+                this.world.getCollisionShapes(this, searchBox)));
+
+        // MODIFICATION: keep the EventStep hook working on the modern path
+        if (!PacketFixFor1_21Plus.shouldUseGrimVanillaMovement() && this instanceof ClientPlayerEntity) {
+            EventStep event = new EventStep((double) this.stepHeight, adjusted);
+            EventBus.call(event);
+
+            if (event.cancelled) {
+                return adjusted;
+            }
+        }
+
+        float[] candidateHeights = collectCandidateStepUpHeights(steppedBox, stepHits, this.stepHeight,
+                (float) adjusted.y);
+
+        for (float candidate : candidateHeights) {
+            Vector3d stepped = collideBoundingBox(new Vector3d(vec.x, (double) candidate, vec.z), steppedBox,
+                    stepHits);
+
+            if (horizontalMag(stepped) > horizontalMag(adjusted)) {
+                return stepped.add(0.0D, steppedBox.minY - box.minY, 0.0D);
+            }
+        }
+
+        return adjusted;
+    }
+
+    private static float[] collectCandidateStepUpHeights(AxisAlignedBB box, ReuseableStream<VoxelShape> shapes,
+            float stepHeight, float collidedY) {
+        java.util.TreeSet<Float> candidates = new java.util.TreeSet<>();
+        java.util.Iterator<VoxelShape> iterator = shapes.createStream().iterator();
+
+        while (iterator.hasNext()) {
+            for (AxisAlignedBB shapeBox : iterator.next().toBoundingBoxList()) {
+                addCandidateStepUpHeight(candidates, (float) (shapeBox.minY - box.minY), stepHeight, collidedY);
+                addCandidateStepUpHeight(candidates, (float) (shapeBox.maxY - box.minY), stepHeight, collidedY);
+            }
+        }
+
+        float[] result = new float[candidates.size()];
+        int i = 0;
+
+        for (float candidate : candidates) {
+            result[i++] = candidate;
+        }
+
+        return result;
+    }
+
+    private static void addCandidateStepUpHeight(java.util.TreeSet<Float> candidates, float delta, float stepHeight,
+            float collidedY) {
+        if (delta >= 0.0F && delta <= stepHeight && delta != collidedY) {
+            candidates.add(delta);
+        }
     }
 
     public static double horizontalMag(Vector3d vec) {
@@ -998,8 +1219,18 @@ public abstract class Entity implements INameable, ICommandSource {
 
     protected void doBlockCollisions() {
         AxisAlignedBB axisalignedbb = this.getBoundingBox();
-        double collisionMargin = PacketFixFor1_21Plus.isEnabled()
-                && PacketFixFor1_21Plus.isTargetAtLeast1_21_3Protocol() ? 1.0E-5F : 0.001D;
+        final ProtocolVersion targetVersion = ViaLoadingBase.getInstance().getTargetVersion();
+        // inside-block detection margin: 1.0E-3 (<=1.19.1), 1.0E-7 (1.19.3 - 1.21.1), 1.0E-5 (1.21.2+)
+        double collisionMargin;
+
+        if (targetVersion.olderThanOrEqualTo(ProtocolVersion.v1_19_1)) {
+            collisionMargin = 0.001D;
+        } else if (targetVersion.olderThanOrEqualTo(ProtocolVersion.v1_21)) {
+            collisionMargin = 1.0E-7D;
+        } else {
+            collisionMargin = 9.999999747378752E-6D;
+        }
+
         BlockPos blockpos = new BlockPos(axisalignedbb.minX + collisionMargin,
                 axisalignedbb.minY + collisionMargin, axisalignedbb.minZ + collisionMargin);
         BlockPos blockpos1 = new BlockPos(axisalignedbb.maxX - collisionMargin,
@@ -1152,6 +1383,12 @@ public abstract class Entity implements INameable, ICommandSource {
     }
 
     public void updateSwimming() {
+        // Swimming pose only exists since 1.13
+        if (ViaLoadingBase.getInstance().getTargetVersion().olderThanOrEqualTo(ProtocolVersion.v1_12_2)) {
+            this.setSwimming(false);
+            return;
+        }
+
         if (this.isSwimming()) {
             this.setSwimming(this.isSprinting() && this.isInWater() && !this.isPassenger());
         } else {
@@ -1186,7 +1423,10 @@ public abstract class Entity implements INameable, ICommandSource {
     private void updateEyesInWater() {
         this.eyesInWater = this.areEyesInFluid(FluidTags.WATER);
         this.field_241335_O_ = null;
-        double d0 = this.getPosYEye() - (double) 0.11111111F;
+        // 1.20.5 removed the 0.1111 eye submersion offset
+        double d0 = ViaLoadingBase.getInstance().getTargetVersion().newerThanOrEqualTo(ProtocolVersion.v1_20_5)
+                ? this.getPosYEye()
+                : this.getPosYEye() - (double) 0.11111111F;
         Entity entity = this.getRidingEntity();
 
         if (entity instanceof BoatEntity) {
@@ -1330,8 +1570,11 @@ public abstract class Entity implements INameable, ICommandSource {
 
     private static Vector3d getAbsoluteMotion(Vector3d relative, float p_213299_1_, float facing) {
         double d0 = relative.lengthSquared();
+        // pre-1.14 the input vector used a much larger dead-zone (1.0E-4)
+        double epsilon = ViaLoadingBase.getInstance().getTargetVersion()
+                .olderThanOrEqualTo(ProtocolVersion.v1_13_2) ? 1.0E-4D : 1.0E-7D;
 
-        if (d0 < 1.0E-7D) {
+        if (d0 < epsilon) {
             return Vector3d.ZERO;
         } else {
             Vector3d vector3d = (d0 > 1.0D ? relative.normalize() : relative).scale((double) p_213299_1_);
@@ -1599,6 +1842,11 @@ public abstract class Entity implements INameable, ICommandSource {
      * Creates a Vec3 using the pitch and yaw of the entities rotation.
      */
     protected final Vector3d getVectorForRotation(float pitch, float yaw) {
+        // 1.13 changed the float rounding of the view vector calculation
+        if (ViaLoadingBase.getInstance().getTargetVersion().olderThanOrEqualTo(ProtocolVersion.v1_12_2)) {
+            return Vector3d.fromPitchYaw(pitch, yaw);
+        }
+
         float f = pitch * ((float) Math.PI / 180F);
         float f1 = -yaw * ((float) Math.PI / 180F);
         float f2 = MathHelper.cos(f1);
@@ -2094,6 +2342,11 @@ public abstract class Entity implements INameable, ICommandSource {
     }
 
     protected boolean isPoseClear(Pose pose) {
+        // <=1.15.2 checks the pose box without deflating it
+        if (ViaLoadingBase.getInstance().getTargetVersion().olderThanOrEqualTo(ProtocolVersion.v1_15_2)) {
+            return this.world.hasNoCollisions(this, this.getBoundingBox(pose));
+        }
+
         return this.world.hasNoCollisions(this, this.getBoundingBox(pose).shrink(1.0E-7D));
     }
 
@@ -2161,7 +2414,10 @@ public abstract class Entity implements INameable, ICommandSource {
     }
 
     public float getCollisionBorderSize() {
-        return 0.0F;
+        // 1.8 expands entity hitboxes by 0.1 for targeting
+        return ViaLoadingBase.getInstance().getTargetVersion().olderThanOrEqualTo(ProtocolVersion.v1_8)
+                ? 0.1F
+                : 0.0F;
     }
 
     /**
@@ -3380,24 +3636,30 @@ public abstract class Entity implements INameable, ICommandSource {
             }
 
             if (vector3d.length() > 0.0D) {
-                if (k1 > 0) {
-                    vector3d = vector3d.scale(1.0D / (double) k1);
+                if (legacyFluidMovement) {
+                    // Pre-1.13 always normalizes the summed flow vector (players included)
+                    // and applies it directly without averaging or the minimum-push branch
+                    this.setMotion(this.getMotion().add(vector3d.normalize().scale(p_210500_2_)));
+                } else {
+                    if (k1 > 0) {
+                        vector3d = vector3d.scale(1.0D / (double) k1);
+                    }
+
+                    if (!(this instanceof PlayerEntity)) {
+                        vector3d = vector3d.normalize();
+                    }
+
+                    Vector3d vector3d2 = this.getMotion();
+                    vector3d = vector3d.scale(p_210500_2_ * 1.0D);
+                    double d2 = 0.003D;
+
+                    if (Math.abs(vector3d2.x) < 0.003D && Math.abs(vector3d2.z) < 0.003D
+                            && vector3d.length() < 0.0045000000000000005D) {
+                        vector3d = vector3d.normalize().scale(0.0045000000000000005D);
+                    }
+
+                    this.setMotion(this.getMotion().add(vector3d));
                 }
-
-                if (!(this instanceof PlayerEntity)) {
-                    vector3d = vector3d.normalize();
-                }
-
-                Vector3d vector3d2 = this.getMotion();
-                vector3d = vector3d.scale(p_210500_2_ * 1.0D);
-                double d2 = 0.003D;
-
-                if (Math.abs(vector3d2.x) < 0.003D && Math.abs(vector3d2.z) < 0.003D
-                        && vector3d.length() < 0.0045000000000000005D) {
-                    vector3d = vector3d.normalize().scale(0.0045000000000000005D);
-                }
-
-                this.setMotion(this.getMotion().add(vector3d));
             }
 
             this.eyesFluidLevel.put(fluidTag, d0);

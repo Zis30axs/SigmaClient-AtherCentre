@@ -560,6 +560,32 @@ public abstract class AbstractBlock {
         }
 
         public float getBlockHardness(IBlockReader worldIn, BlockPos pos) {
+            Block block = this.getBlock();
+            com.viaversion.viaversion.api.protocol.version.ProtocolVersion targetVersion =
+                    com.mentalfrostbyte.jello.gui.base.JelloPortal.getVersion();
+
+            if (block == Blocks.END_STONE_BRICKS || block == Blocks.END_STONE_BRICK_SLAB
+                    || block == Blocks.END_STONE_BRICK_STAIRS || block == Blocks.END_STONE_BRICK_WALL) {
+                // 1.15 raised the end stone brick family from 0.8 to 3.0
+                if (targetVersion.olderThanOrEqualTo(com.viaversion.viaversion.api.protocol.version.ProtocolVersion.v1_14_4)) {
+                    return 0.8F;
+                }
+            } else if (block == Blocks.PISTON || block == Blocks.STICKY_PISTON || block == Blocks.PISTON_HEAD) {
+                // 1.16 raised pistons from 0.5 to 1.5
+                if (targetVersion.olderThanOrEqualTo(com.viaversion.viaversion.api.protocol.version.ProtocolVersion.v1_15_2)) {
+                    return 0.5F;
+                }
+            } else if (block instanceof SilverfishBlock) {
+                // <=1.12.2: 0.75, 1.13-1.16: 0 (this codebase's native value), 1.17+: half of the host block
+                if (targetVersion.olderThanOrEqualTo(com.viaversion.viaversion.api.protocol.version.ProtocolVersion.v1_12_2)) {
+                    return 0.75F;
+                }
+
+                if (targetVersion.newerThanOrEqualTo(com.viaversion.viaversion.api.protocol.version.ProtocolVersion.v1_17)) {
+                    return ((SilverfishBlock) block).getMimickedBlock().getDefaultState().getBlockHardness(worldIn, pos) / 2.0F;
+                }
+            }
+
             return this.hardness;
         }
 
@@ -791,6 +817,13 @@ public abstract class AbstractBlock {
         protected abstract BlockState getSelf();
 
         public boolean getRequiresTool() {
+            // shulker boxes required a proper tool before 1.14
+            if (this.getBlock() instanceof ShulkerBoxBlock
+                    && com.mentalfrostbyte.jello.gui.base.JelloPortal.getVersion()
+                            .olderThan(com.viaversion.viaversion.api.protocol.version.ProtocolVersion.v1_14)) {
+                return true;
+            }
+
             return this.requiresTool;
         }
 

@@ -46,6 +46,12 @@ public class MathHelper
      */
     public static float sin(float value)
     {
+        // 1.21.10+ replaced the sin table with precise math
+        if (usePreciseTrig())
+        {
+            return (float)Math.sin((double)value);
+        }
+
         return fastMath ? SIN_TABLE_FAST[(int)(value * radToIndex) & 4095] : SIN_TABLE[(int)(value * 10430.378F) & 65535];
     }
 
@@ -54,7 +60,40 @@ public class MathHelper
      */
     public static float cos(float value)
     {
+        if (usePreciseTrig())
+        {
+            return (float)Math.cos((double)value);
+        }
+
         return fastMath ? SIN_TABLE_FAST[(int)(value * radToIndex + 1024.0F) & 4095] : SIN_TABLE[(int)(value * 10430.378F + 16384.0F) & 65535];
+    }
+
+    private static com.viaversion.viaversion.api.protocol.version.ProtocolVersion trigCachedVersion;
+    private static boolean trigPrecise;
+
+    private static boolean usePreciseTrig()
+    {
+        de.florianmichael.vialoadingbase.ViaLoadingBase viaLoadingBase = de.florianmichael.vialoadingbase.ViaLoadingBase.getInstance();
+
+        if (viaLoadingBase == null)
+        {
+            return false;
+        }
+
+        com.viaversion.viaversion.api.protocol.version.ProtocolVersion target = viaLoadingBase.getTargetVersion();
+
+        if (target == null)
+        {
+            return false;
+        }
+
+        if (target != trigCachedVersion)
+        {
+            trigCachedVersion = target;
+            trigPrecise = target.newerThan(com.viaversion.viaversion.api.protocol.version.ProtocolVersion.v1_21_9);
+        }
+
+        return trigPrecise;
     }
 
     public static float sqrt(float value)

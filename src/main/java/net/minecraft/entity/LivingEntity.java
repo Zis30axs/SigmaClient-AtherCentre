@@ -2086,7 +2086,12 @@ public abstract class LivingEntity extends Entity {
             f += 0.1F * (float)(this.getActivePotionEffect(Effects.JUMP_BOOST).getAmplifier() + 1);
         }
 
-        this.setMotion(vector3d.x, (double)f, vector3d.z);
+        // 1.21.2+ keeps existing upwards momentum when it exceeds the jump power
+        double jumpY = ViaLoadingBase.getInstance().getTargetVersion().newerThanOrEqualTo(ProtocolVersion.v1_21_2)
+                ? Math.max((double)f, vector3d.y)
+                : (double)f;
+
+        this.setMotion(vector3d.x, jumpY, vector3d.z);
 
         if (this.isSprinting())
         {
@@ -2195,16 +2200,26 @@ public abstract class LivingEntity extends Entity {
                 this.moveRelative(0.02F, travelVector);
                 this.move(MoverType.SELF, this.getMotion());
 
-                if (this.func_233571_b_(FluidTags.LAVA) <= this.func_233579_cu_()) {
-                    this.setMotion(this.getMotion().mul(0.5D, (double) 0.8F, 0.5D));
-                    Vector3d vector3d3 = this.applyFluidMovingSpeed(d0, flag, this.getMotion());
-                    this.setMotion(vector3d3);
-                } else {
+                if (targetVersion.olderThanOrEqualTo(ProtocolVersion.v1_15_2)) {
+                    // 1.16 introduced lava swimming, before that lava always applied
+                    // 0.5 friction on all axes and a plain gravity pull
                     this.setMotion(this.getMotion().scale(0.5D));
-                }
 
-                if (d0 != 0.0D) {
-                    this.setMotion(this.getMotion().add(0.0D, -d0 / 4.0D, 0.0D));
+                    if (d0 != 0.0D) {
+                        this.setMotion(this.getMotion().add(0.0D, -d0 / 4.0D, 0.0D));
+                    }
+                } else {
+                    if (this.func_233571_b_(FluidTags.LAVA) <= this.func_233579_cu_()) {
+                        this.setMotion(this.getMotion().mul(0.5D, (double) 0.8F, 0.5D));
+                        Vector3d vector3d3 = this.applyFluidMovingSpeed(d0, flag, this.getMotion());
+                        this.setMotion(vector3d3);
+                    } else {
+                        this.setMotion(this.getMotion().scale(0.5D));
+                    }
+
+                    if (d0 != 0.0D) {
+                        this.setMotion(this.getMotion().add(0.0D, -d0 / 4.0D, 0.0D));
+                    }
                 }
 
                 Vector3d vector3d4 = this.getMotion();
@@ -2224,7 +2239,10 @@ public abstract class LivingEntity extends Entity {
                 double d1 = Math.sqrt(vector3d1.x * vector3d1.x + vector3d1.z * vector3d1.z);
                 double d3 = Math.sqrt(horizontalMag(vector3d));
                 double d4 = vector3d1.length();
-                float f1 = MathHelper.cos(f);
+                // 1.18.2 switched the pitch factor from the sin-table to precise Math.cos
+                float f1 = targetVersion.newerThanOrEqualTo(ProtocolVersion.v1_18_2)
+                        ? (float) Math.cos((double) f)
+                        : MathHelper.cos(f);
                 f1 = (float) ((double) f1 * (double) f1 * Math.min(1.0D, d4 / 0.4D));
                 vector3d = this.getMotion().add(0.0D, d0 * (-1.0D + (double) f1 * 0.75D), 0.0D);
 
@@ -2268,7 +2286,8 @@ public abstract class LivingEntity extends Entity {
 
                 if (this.isPotionActive(Effects.LEVITATION)) {
                     d2 += (0.05D * (double) (this.getActivePotionEffect(Effects.LEVITATION).getAmplifier() + 1) - vector3d5.y) * 0.2D;
-                    if (!use1_21Movement) {
+                    // <=1.12.2 doesn't reset the fall distance while levitating
+                    if (!use1_21Movement && targetVersion.newerThan(ProtocolVersion.v1_12_2)) {
                         this.fallDistance = 0.0F;
                     }
                 } else if (this.world.isRemote && !this.world.isBlockLoaded(blockpos)) {
@@ -2802,8 +2821,14 @@ public abstract class LivingEntity extends Entity {
      */
     private void updateElytra() {
         boolean flag = this.getFlag(7);
+        final ProtocolVersion elytraTargetVersion = ViaLoadingBase.getInstance().getTargetVersion();
+        // riding stops gliding since 1.15, levitation since 1.16, climbing since 1.21.5
+        boolean passengerStops = elytraTargetVersion.newerThan(ProtocolVersion.v1_14_4) && this.isPassenger();
+        boolean levitationStops = elytraTargetVersion.newerThan(ProtocolVersion.v1_15_2)
+                && this.isPotionActive(Effects.LEVITATION);
+        boolean climbingStops = elytraTargetVersion.newerThan(ProtocolVersion.v1_21_4) && this.isOnLadder();
 
-        if (flag && !this.onGround && !this.isPassenger() && !this.isPotionActive(Effects.LEVITATION)) {
+        if (flag && !this.onGround && !passengerStops && !levitationStops && !climbingStops) {
             ItemStack itemstack = this.getItemStackFromSlot(EquipmentSlotType.CHEST);
 
             if (itemstack.getItem() == Items.ELYTRA && ElytraItem.isUsable(itemstack)) {

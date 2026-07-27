@@ -1,6 +1,9 @@
 package net.minecraft.block;
 
+import com.mentalfrostbyte.jello.gui.base.JelloPortal;
+import com.viaversion.viaversion.api.protocol.version.ProtocolVersion;
 import java.util.Random;
+import net.minecraft.entity.Entity;
 import net.minecraft.pathfinding.PathType;
 import net.minecraft.util.Direction;
 import net.minecraft.util.math.BlockPos;
@@ -19,6 +22,21 @@ public class SoulSandBlock extends Block
     public SoulSandBlock(AbstractBlock.Properties properties)
     {
         super(properties);
+    }
+
+    public float getSpeedFactor()
+    {
+        // the 0.4 speed factor was introduced in 1.15, before that the slowdown
+        // was applied while intersecting the block (see onEntityCollision)
+        return JelloPortal.getVersion().olderThanOrEqualTo(ProtocolVersion.v1_14_4) ? 1.0F : super.getSpeedFactor();
+    }
+
+    public void onEntityCollision(BlockState state, World worldIn, BlockPos pos, Entity entityIn)
+    {
+        if (JelloPortal.getVersion().olderThanOrEqualTo(ProtocolVersion.v1_14_4))
+        {
+            entityIn.setMotion(entityIn.getMotion().mul(0.4D, 1.0D, 0.4D));
+        }
     }
 
     public VoxelShape getCollisionShape(BlockState state, IBlockReader worldIn, BlockPos pos, ISelectionContext context)
