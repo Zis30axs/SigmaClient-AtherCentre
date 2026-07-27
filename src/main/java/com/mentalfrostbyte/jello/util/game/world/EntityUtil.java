@@ -223,7 +223,9 @@ public class EntityUtil {
 
     public static List<PlayerEntity> getPlayerEntities() {
         ArrayList<PlayerEntity> result = new ArrayList<>();
-        assert mc.world != null;
+        if (mc.world == null) {
+            return result;
+        }
         mc.world.entitiesById.forEach((var1, var2x) -> {
             if (var2x instanceof PlayerEntity) {
                 result.add((PlayerEntity) var2x);

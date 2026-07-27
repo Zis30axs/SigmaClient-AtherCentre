@@ -32,7 +32,7 @@ public class BotManager extends Manager {
     @EventTarget
     @HighestPriority
     public void onPlayerTick(EventTick var1) {
-        if (this.antiBot != null && mc.player != null) {
+        if (this.antiBot != null && mc.player != null && mc.world != null) {
             for (PlayerEntity entity : EntityUtil.getPlayerEntities()) {
                 if (!this.antiBot.isBot(entity)) {
                     if (this.antiBot.isNotBot(entity)) {
