@@ -1048,7 +1048,7 @@ public abstract class PlayerEntity extends LivingEntity {
         if (event.getSituation() == EventSafeWalk.Situation.SAFE
                 || (!PacketFixFor1_21Plus.shouldUseVanilla1_21MovementPhysics() || !(vec.y > 0.0D))
                 && !this.abilities.isFlying && (mover == MoverType.SELF || mover == MoverType.PLAYER)
-                && this.isStayingOnGroundSurface() && this.method_30263(f)) {
+                && this.isStayingOnGroundSurface() && this.isAboveGround(f)) {
             double d0 = vec.x;
             double d1 = vec.z;
             double d2 = 0.05D;
@@ -1101,11 +1101,13 @@ public abstract class PlayerEntity extends LivingEntity {
         return vec;
     }
 
-    private boolean func_242375_q() {
-        return this.onGround || this.fallDistance < this.stepHeight && !this.world.hasNoCollisions(this, this.getBoundingBox().offset(0.0D, (double) (this.fallDistance - this.stepHeight), 0.0D));
-    }
+    private boolean isAboveGround(float stepHeight) {
+        // isAboveGround() only exists in 1.16.2+; older clients gate purely on onGround, so a
+        // sneaking player who jumps off an edge gets no backoff clamp at all.
+        if (JelloPortal.getVersion().olderThanOrEqualTo(ProtocolVersion.v1_16_1)) {
+            return this.onGround;
+        }
 
-    private boolean method_30263(float stepHeight) {
         return this.onGround || this.fallDistance < stepHeight && !this.isSpaceAroundPlayerEmpty(0.0D, 0.0D, stepHeight - this.fallDistance);
     }
 
