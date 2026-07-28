@@ -642,12 +642,28 @@ public abstract class Entity implements INameable, ICommandSource {
             this.updateFallState(vector3d.y, this.onGround, blockstate, blockpos);
             Vector3d vector3d1 = this.getMotion();
 
-            if (pos.x != vector3d.x) {
-                this.setMotion(0.0D, vector3d1.y, vector3d1.z);
-            }
+            // 1.8 and 1.18.2+ zero each axis independently.  1.14-1.18.1 has a
+            // quirk where the second setMotion restores the first axis from the
+            // cached snapshot – the server has the same quirk so we must replicate it.
+            boolean independentAxisZeroing = ViaLoadingBase.getInstance().getTargetVersion()
+                    .olderThanOrEqualTo(ProtocolVersion.v1_13_2)
+                    || ViaLoadingBase.getInstance().getTargetVersion()
+                            .newerThanOrEqualTo(ProtocolVersion.v1_18_2);
 
-            if (pos.z != vector3d.z) {
-                this.setMotion(vector3d1.x, vector3d1.y, 0.0D);
+            if (independentAxisZeroing) {
+                if (pos.x != vector3d.x) {
+                    this.setMotion(0.0D, this.getMotion().y, this.getMotion().z);
+                }
+                if (pos.z != vector3d.z) {
+                    this.setMotion(this.getMotion().x, this.getMotion().y, 0.0D);
+                }
+            } else {
+                if (pos.x != vector3d.x) {
+                    this.setMotion(0.0D, vector3d1.y, vector3d1.z);
+                }
+                if (pos.z != vector3d.z) {
+                    this.setMotion(vector3d1.x, vector3d1.y, 0.0D);
+                }
             }
 
             Block block = blockstate.getBlock();
