@@ -16,7 +16,10 @@ Some parts of the code have been modified to fit this project. These modificatio
 
 Other:
 YSM(特异人士版本):From @ashleyteh4got10
+
 MMDSkin:From https://github.com/shiroha-233/MC-MMD-rust
+
+Some bypass: liquidbounce.net
 
 This project itself is licensed under **GPL-3.0**, while the original MIT-licensed portions remain subject to their original MIT License terms.
 
