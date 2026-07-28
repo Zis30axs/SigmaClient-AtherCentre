@@ -127,8 +127,10 @@ public class MovementInputFromOptions extends MovementInput {
         this.jump = eventMoveInput.jumping;
         this.sneaking = eventMoveInput.sneaking;
 
-        PacketFixFor1_21Plus.normalizeRaw1_21_5MovementInput(this);
-        normalizeDiagonalInput1_21_5(this);
+        // 1.21.5+: do NOT pre-normalize diagonal input here.  The server applies
+        // sneak slowdown to the RAW (1,1) input first, then getAbsoluteMotion's
+        // internal d0>1 check handles normalization.  Pre-normalizing would make
+        // sneaking diagonal 29% slower than the server expects.
 
         if (shouldApplySneakSlowdown(forcedDown, this.sneaking)) {
             this.moveStrafe *= eventMoveInput.sneakFactor;
@@ -138,7 +140,7 @@ public class MovementInputFromOptions extends MovementInput {
 
     /**
      * 1.21.5+ normalizes the raw diagonal input before the slowdown factors are
-     * applied (diagonal x0.98 becomes 0.693 per axis instead of 0.7071).
+     * applied (diagonal becomes 0.7071 per axis via 1/sqrt(2)).
      */
     private static void normalizeDiagonalInput1_21_5(MovementInput input) {
         if (JelloPortal.getVersion().olderThan(ProtocolVersion.v1_21_5)) {
@@ -196,8 +198,7 @@ public class MovementInputFromOptions extends MovementInput {
 
         this.jump = this.gameSettings.keyBindJump.isKeyDown();
         this.sneaking = this.gameSettings.keyBindSneak.isKeyDown();
-        PacketFixFor1_21Plus.normalizeRaw1_21_5MovementInput(this);
-        normalizeDiagonalInput1_21_5(this);
+        // 1.21.5+: no pre-normalization (see comment in tickMovement)
 
         if (shouldApplySneakSlowdown(forcedDown, this.sneaking)) {
             float sneakFactor = getSneakSlowdownFactor();

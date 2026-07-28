@@ -23,6 +23,7 @@ import team.sdhq.eventBus.EventBus;
 
 public final class VoxelShapes
 {
+
     private static final VoxelShape FULL_CUBE = Util.make(() ->
     {
         VoxelShapePart voxelshapepart = new BitSetVoxelShapePart(1, 1, 1);

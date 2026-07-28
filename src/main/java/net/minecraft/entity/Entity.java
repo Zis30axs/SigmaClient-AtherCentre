@@ -617,9 +617,9 @@ public abstract class Entity implements INameable, ICommandSource {
             pos = this.maybeBackOffFromEdge(pos, typeIn);
             Vector3d vector3d = this.getAllowedMovement(pos);
             double allowedLengthSquared = vector3d.lengthSquared();
-            // 1.21.2+ also applies tiny movements when the collision adjustment is small
+            // 1.20.5+ also applies tiny movements when the collision adjustment is small
             boolean modernSmallMovement = ViaLoadingBase.getInstance().getTargetVersion()
-                    .newerThan(ProtocolVersion.v1_21)
+                    .newerThanOrEqualTo(ProtocolVersion.v1_20_5)
                     && pos.lengthSquared() - allowedLengthSquared < 1.0E-7D;
 
             if (allowedLengthSquared > 1.0E-7D || modernSmallMovement) {
@@ -896,8 +896,10 @@ public abstract class Entity implements INameable, ICommandSource {
         if (this.stepHeight > 0.0F && flag3 && (flag || flag2)) {
             final ProtocolVersion stepTargetVersion = ViaLoadingBase.getInstance().getTargetVersion();
 
-            // 1.20.5 rewrote step-up: every candidate height collected from nearby
-            // collision shapes is tried instead of only the full step height
+            // 1.20.5+ uses the modern step-up: every candidate height collected from
+            // nearby collision shapes is tried instead of only the full step height.
+            // The candidate-height step algorithm was introduced in MC 1.20.5, so the
+            // modern step starts at v1_20_5 (not v1_21).
             if (stepTargetVersion.newerThanOrEqualTo(ProtocolVersion.v1_20_5)) {
                 return this.getAllowedMovementModernStep(vec, vector3d, axisalignedbb, iselectioncontext,
                         reuseablestream);
@@ -919,7 +921,7 @@ public abstract class Entity implements INameable, ICommandSource {
             double height = !(this instanceof ClientPlayerEntity)
                     ? 0.0
                     : collideBoundingBoxHeuristically(this, new Vector3d(0.0, -vector3d1.y, 0.0),
-                            axisalignedbb.offset(vector3d1), this.world, iselectioncontext, reuseablestream).y
+                            axisalignedbb.offset(vector3d1.x, vector3d1.y, vector3d1.z), this.world, iselectioncontext, reuseablestream).y
                             + vector3d1.y;
 
             // MODIFICATION START: add cancelled boolean so we can access it from outside
@@ -960,22 +962,29 @@ public abstract class Entity implements INameable, ICommandSource {
      */
     private Vector3d getAllowedMovementLegacyStep(Vector3d vec, Vector3d adjusted, AxisAlignedBB box,
             ReuseableStream<VoxelShape> potentialHits) {
+        // 1.8 queries the world at each sub-step; gather shapes covering the full
+        // step-up region (raised by stepHeight + horizontal movement) so that
+        // blocks at the raised position are not missed.
+        ReuseableStream<VoxelShape> stepHits = new ReuseableStream<>(Stream.concat(
+                potentialHits.createStream(),
+                this.world.getCollisionShapes(this, box.expand(vec.x, (double) this.stepHeight, vec.z))));
+
         // variant 1: the upwards offset is limited by the horizontally extended box
         double up1 = VoxelShapes.getAllowedOffset(Direction.Axis.Y, box.expand(vec.x, 0.0D, vec.z),
-                potentialHits.createStream(), (double) this.stepHeight);
+                stepHits.createStream(), (double) this.stepHeight);
         AxisAlignedBB raised1 = box.offset(0.0D, up1, 0.0D);
-        double x1 = VoxelShapes.getAllowedOffset(Direction.Axis.X, raised1, potentialHits.createStream(), vec.x);
+        double x1 = VoxelShapes.getAllowedOffset(Direction.Axis.X, raised1, stepHits.createStream(), vec.x);
         raised1 = raised1.offset(x1, 0.0D, 0.0D);
-        double z1 = VoxelShapes.getAllowedOffset(Direction.Axis.Z, raised1, potentialHits.createStream(), vec.z);
+        double z1 = VoxelShapes.getAllowedOffset(Direction.Axis.Z, raised1, stepHits.createStream(), vec.z);
         raised1 = raised1.offset(0.0D, 0.0D, z1);
 
         // variant 2: the upwards offset is limited by the plain box
-        double up2 = VoxelShapes.getAllowedOffset(Direction.Axis.Y, box, potentialHits.createStream(),
+        double up2 = VoxelShapes.getAllowedOffset(Direction.Axis.Y, box, stepHits.createStream(),
                 (double) this.stepHeight);
         AxisAlignedBB raised2 = box.offset(0.0D, up2, 0.0D);
-        double x2 = VoxelShapes.getAllowedOffset(Direction.Axis.X, raised2, potentialHits.createStream(), vec.x);
+        double x2 = VoxelShapes.getAllowedOffset(Direction.Axis.X, raised2, stepHits.createStream(), vec.x);
         raised2 = raised2.offset(x2, 0.0D, 0.0D);
-        double z2 = VoxelShapes.getAllowedOffset(Direction.Axis.Z, raised2, potentialHits.createStream(), vec.z);
+        double z2 = VoxelShapes.getAllowedOffset(Direction.Axis.Z, raised2, stepHits.createStream(), vec.z);
         raised2 = raised2.offset(0.0D, 0.0D, z2);
 
         double stepX;
@@ -995,8 +1004,8 @@ public abstract class Entity implements INameable, ICommandSource {
             steppedBox = raised2;
         }
 
-        double stepDown = VoxelShapes.getAllowedOffset(Direction.Axis.Y, steppedBox, potentialHits.createStream(),
-                -stepUp);
+        double stepDown = VoxelShapes.getAllowedOffset(Direction.Axis.Y, steppedBox, stepHits.createStream(),
+                -(double) this.stepHeight);
         double stepY = stepUp + stepDown;
 
         // MODIFICATION: keep the EventStep hook working on the legacy path
@@ -1018,12 +1027,18 @@ public abstract class Entity implements INameable, ICommandSource {
     }
 
     /**
-     * 1.21+ step-up algorithm: collect every collision edge between the feet and
+     * 1.20.5+ step-up algorithm: collect every collision edge between the feet and
      * the step height and try them from lowest to highest.
      */
     private Vector3d getAllowedMovementModernStep(Vector3d vec, Vector3d adjusted, AxisAlignedBB box,
             ISelectionContext context, ReuseableStream<VoxelShape> potentialHits) {
-        AxisAlignedBB steppedBox = this.onGround ? box.offset(0.0D, adjusted.y, 0.0D) : box;
+        // Only offset the search box by adjusted.y when the entity is settling down
+        // (adjusted.y <= 0).  During a jump (adjusted.y > 0) the offset would raise
+        // the search area and allow a full-block step in a single tick, which
+        // anti-cheats (Grim) flag as a simulation mismatch.
+        AxisAlignedBB steppedBox = this.onGround && adjusted.y <= 0.0D
+                ? box.offset(0.0D, adjusted.y, 0.0D)
+                : box;
         AxisAlignedBB searchBox = steppedBox.expand(vec.x, (double) this.stepHeight, vec.z);
 
         if (!this.onGround) {

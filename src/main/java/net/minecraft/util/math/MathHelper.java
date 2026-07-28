@@ -90,7 +90,8 @@ public class MathHelper
         if (target != trigCachedVersion)
         {
             trigCachedVersion = target;
-            trigPrecise = target.newerThan(com.viaversion.viaversion.api.protocol.version.ProtocolVersion.v1_21_9);
+            // 1.21.2 removed the sin/cos lookup table in favour of precise Math.sin/cos
+            trigPrecise = target.newerThanOrEqualTo(com.viaversion.viaversion.api.protocol.version.ProtocolVersion.v1_21_2);
         }
 
         return trigPrecise;
