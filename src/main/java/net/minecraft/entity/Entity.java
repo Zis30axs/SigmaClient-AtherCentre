@@ -10,6 +10,7 @@ import com.mentalfrostbyte.jello.util.game.world.BoundingBox;
 import com.viaversion.viaversion.api.protocol.version.ProtocolVersion;
 import de.florianmichael.vialoadingbase.ViaLoadingBase;
 import de.florianmichael.viamcp.fixes.PacketFixFor1_21Plus;
+import de.florianmichael.viamcp.fixes.PacketFixFor1_21_5Plus;
 import it.unimi.dsi.fastutil.objects.Object2DoubleArrayMap;
 import it.unimi.dsi.fastutil.objects.Object2DoubleMap;
 
@@ -147,6 +148,8 @@ public abstract class Entity implements INameable, ICommandSource {
     public AxisAlignedBB boundingBox = ZERO_AABB;
     public boolean onGround;
     public boolean collidedHorizontally;
+    /** 1.18+ / modern Entity.minorHorizontalCollision; set from collided movement in move(). */
+    public boolean minorHorizontalCollision;
     public boolean collidedVertically;
     public boolean velocityChanged;
     protected Vector3d motionMultiplier = Vector3d.ZERO;
@@ -597,6 +600,7 @@ public abstract class Entity implements INameable, ICommandSource {
         if (this.noClip) {
             this.setBoundingBox(this.getBoundingBox().offset(pos));
             this.resetPositionToBB();
+            this.minorHorizontalCollision = false;
         } else {
             if (typeIn == MoverType.PISTON) {
                 pos = this.handlePistonMovement(pos);
@@ -629,19 +633,25 @@ public abstract class Entity implements INameable, ICommandSource {
 
             this.world.getProfiler().endSection();
             this.world.getProfiler().startSection("rest");
-            boolean legacyExactHorizontalCollision = ViaLoadingBase.getInstance().getTargetVersion()
-                    .olderThanOrEqualTo(ProtocolVersion.v1_12_2);
-            this.collidedHorizontally = legacyExactHorizontalCollision
-                    ? pos.x != vector3d.x || pos.z != vector3d.z
-                    : !MathHelper.epsilonEquals(pos.x, vector3d.x)
-                            || !MathHelper.epsilonEquals(pos.z, vector3d.z);
+            // ViaFP horizontalExactCollisionEqualness inverted: exact <=1.12.2, epsilon 1.13+
+            this.collidedHorizontally = PacketFixFor1_21_5Plus.axisCollided(pos.x, vector3d.x)
+                    || PacketFixFor1_21_5Plus.axisCollided(pos.z, vector3d.z);
+            // Modern Entity.move: minor HC from collided movement + post-input xxa/zza
+            PacketFixFor1_21_5Plus.updateMinorHorizontalCollision(this, vector3d);
             this.collidedVertically = pos.y != vector3d.y;
             this.onGround = this.collidedVertically && pos.y < 0.0D;
             BlockPos blockpos = this.getOnPosition();
             BlockState blockstate = this.world.getBlockState(blockpos);
             this.updateFallState(vector3d.y, this.onGround, blockstate, blockpos);
-            Vector3d vector3d1 = this.getMotion();
 
+            Vector3d vector3d1 = vector3d;
+            if (PacketFixFor1_21_5Plus.axisCollided(pos.x, vector3d.x)) {
+                this.setMotion(0.0D, this.getMotion().y, this.getMotion().z);
+            }
+
+            if (PacketFixFor1_21_5Plus.axisCollided(pos.z, vector3d.z)) {
+                this.setMotion(this.getMotion().x, this.getMotion().y, 0.0D);
+            }
             // 1.8 and 1.18.2+ zero each axis independently.  1.14-1.18.1 has a
             // quirk where the second setMotion restores the first axis from the
             // cached snapshot – the server has the same quirk so we must replicate it.
@@ -912,19 +922,23 @@ public abstract class Entity implements INameable, ICommandSource {
         if (this.stepHeight > 0.0F && flag3 && (flag || flag2)) {
             final ProtocolVersion stepTargetVersion = ViaLoadingBase.getInstance().getTargetVersion();
 
-            // 1.20.5+ uses the modern step-up: every candidate height collected from
-            // nearby collision shapes is tried instead of only the full step height.
-            // The candidate-height step algorithm was introduced in MC 1.20.5, so the
-            // modern step starts at v1_20_5 (not v1_21).
-            if (stepTargetVersion.newerThanOrEqualTo(ProtocolVersion.v1_20_5)) {
-                return this.getAllowedMovementModernStep(vec, vector3d, axisalignedbb, iselectioncontext,
-                        reuseablestream);
-            }
+            // ViaFP rewinds modern candidate-height step with olderThanOrEqualTo(v1_20_5).
+            // Upgrade path inverts that: modern step only when newerThan(v1_20_5).
+            if (PacketFixFor1_21_5Plus.shouldUseModernStepCollision()) {
+                // 1.20.5+ uses the modern step-up: every candidate height collected from
+                // nearby collision shapes is tried instead of only the full step height.
+                // The candidate-height step algorithm was introduced in MC 1.20.5, so the
+                // modern step starts at v1_20_5 (not v1_21).
+                if (stepTargetVersion.newerThanOrEqualTo(ProtocolVersion.v1_20_5)) {
+                    return this.getAllowedMovementModernStep(vec, vector3d, axisalignedbb, iselectioncontext,
+                            reuseablestream);
+                }
 
-            // <=1.13.2 uses the 1.8 dual-variant step (raise first, then move each
-            // axis) which behaves differently in inner corners
-            if (stepTargetVersion.olderThanOrEqualTo(ProtocolVersion.v1_13_2)) {
-                return this.getAllowedMovementLegacyStep(vec, vector3d, axisalignedbb, reuseablestream);
+                // <=1.13.2 uses the 1.8 dual-variant step (raise first, then move each
+                // axis) which behaves differently in inner corners
+                if (stepTargetVersion.olderThanOrEqualTo(ProtocolVersion.v1_13_2)) {
+                    return this.getAllowedMovementLegacyStep(vec, vector3d, axisalignedbb, reuseablestream);
+                }
             }
 
             Vector3d vector3d1 = collideBoundingBoxHeuristically(this,
@@ -970,6 +984,7 @@ public abstract class Entity implements INameable, ICommandSource {
         }
 
         return vector3d;
+    
     }
 
     /**
@@ -1042,81 +1057,54 @@ public abstract class Entity implements INameable, ICommandSource {
         return adjusted;
     }
 
-    /**
-     * 1.20.5+ step-up algorithm: collect every collision edge between the feet and
-     * the step height and try them from lowest to highest.
-     */
-    private Vector3d getAllowedMovementModernStep(Vector3d vec, Vector3d adjusted, AxisAlignedBB box,
-            ISelectionContext context, ReuseableStream<VoxelShape> potentialHits) {
-        // Only offset the search box by adjusted.y when the entity is settling down
-        // (adjusted.y <= 0).  During a jump (adjusted.y > 0) the offset would raise
-        // the search area and allow a full-block step in a single tick, which
-        // anti-cheats (Grim) flag as a simulation mismatch.
-        AxisAlignedBB steppedBox = this.onGround && adjusted.y <= 0.0D
-                ? box.offset(0.0D, adjusted.y, 0.0D)
-                : box;
-        AxisAlignedBB searchBox = steppedBox.expand(vec.x, (double) this.stepHeight, vec.z);
+/**
+ * 1.20.5+ step-up algorithm: collect every collision edge between the feet and
+ * the step height and try them from lowest to highest.
+ */
+private Vector3d getAllowedMovementModernStep(Vector3d vec, Vector3d adjusted, AxisAlignedBB box,
+        ISelectionContext context, ReuseableStream<VoxelShape> potentialHits) {
+    // Modern Entity.collide: pre-offset step box only when settling onto ground
+    // (vertical hit while moving down). Jump ticks are onGround + y>0 and must NOT
+    // (adjusted.y <= 0).  During a jump (adjusted.y > 0) the offset would raise
+    // anti-cheats (Grim) flag as a simulation mismatch.
+    AxisAlignedBB steppedBox = this.onGround && adjusted.y <= 0.0D
+            ? box.offset(0.0D, adjusted.y, 0.0D)
+            : box;
+    AxisAlignedBB searchBox = steppedBox.expand(vec.x, (double) this.stepHeight, vec.z);
+    searchBox = searchBox.expand(0.0D, -1.0E-5D, 0.0D);
 
-        if (!this.onGround) {
-            searchBox = searchBox.expand(0.0D, -1.0E-5D, 0.0D);
-        }
+    // Modern collectColliders: fixed List used for both candidate collection and each try.
+    // Entity collisions come from the original movement expand (potentialHits); block
+    // collisions are queried for searchBox once — not re-streamed per candidate.
+    java.util.ArrayList<VoxelShape> colliders = new java.util.ArrayList<>();
+    potentialHits.createStream().forEach(colliders::add);
+    this.world.getCollisionShapes(this, searchBox).forEach(colliders::add);
+    ReuseableStream<VoxelShape> stepHits = new ReuseableStream<>(colliders.stream());
 
-        ReuseableStream<VoxelShape> stepHits = new ReuseableStream<>(Stream.concat(potentialHits.createStream(),
-                this.world.getCollisionShapes(this, searchBox)));
+    // MODIFICATION: keep the EventStep hook working on the modern path
+    if (!PacketFixFor1_21Plus.shouldUseGrimVanillaMovement() && this instanceof ClientPlayerEntity) {
+        EventStep event = new EventStep((double) this.stepHeight, adjusted);
+        EventBus.call(event);
 
-        // MODIFICATION: keep the EventStep hook working on the modern path
-        if (!PacketFixFor1_21Plus.shouldUseGrimVanillaMovement() && this instanceof ClientPlayerEntity) {
-            EventStep event = new EventStep((double) this.stepHeight, adjusted);
-            EventBus.call(event);
-
-            if (event.cancelled) {
-                return adjusted;
-            }
-        }
-
-        float[] candidateHeights = collectCandidateStepUpHeights(steppedBox, stepHits, this.stepHeight,
-                (float) adjusted.y);
-
-        for (float candidate : candidateHeights) {
-            Vector3d stepped = collideBoundingBox(new Vector3d(vec.x, (double) candidate, vec.z), steppedBox,
-                    stepHits);
-
-            if (horizontalMag(stepped) > horizontalMag(adjusted)) {
-                return stepped.add(0.0D, steppedBox.minY - box.minY, 0.0D);
-            }
-        }
-
-        return adjusted;
-    }
-
-    private static float[] collectCandidateStepUpHeights(AxisAlignedBB box, ReuseableStream<VoxelShape> shapes,
-            float stepHeight, float collidedY) {
-        java.util.TreeSet<Float> candidates = new java.util.TreeSet<>();
-        java.util.Iterator<VoxelShape> iterator = shapes.createStream().iterator();
-
-        while (iterator.hasNext()) {
-            for (AxisAlignedBB shapeBox : iterator.next().toBoundingBoxList()) {
-                addCandidateStepUpHeight(candidates, (float) (shapeBox.minY - box.minY), stepHeight, collidedY);
-                addCandidateStepUpHeight(candidates, (float) (shapeBox.maxY - box.minY), stepHeight, collidedY);
-            }
-        }
-
-        float[] result = new float[candidates.size()];
-        int i = 0;
-
-        for (float candidate : candidates) {
-            result[i++] = candidate;
-        }
-
-        return result;
-    }
-
-    private static void addCandidateStepUpHeight(java.util.TreeSet<Float> candidates, float delta, float stepHeight,
-            float collidedY) {
-        if (delta >= 0.0F && delta <= stepHeight && delta != collidedY) {
-            candidates.add(delta);
+        if (event.cancelled) {
+            return adjusted;
         }
     }
+
+    float[] candidateHeights = PacketFixFor1_21_5Plus.collectCandidateStepUpHeights(
+            steppedBox, colliders, this.stepHeight, (float) adjusted.y);
+
+    for (float candidate : candidateHeights) {
+        Vector3d stepped = collideBoundingBox(new Vector3d(vec.x, (double) candidate, vec.z), steppedBox,
+                stepHits);
+
+        if (horizontalMag(stepped) > horizontalMag(adjusted)) {
+            return stepped.add(0.0D, steppedBox.minY - box.minY, 0.0D);
+        }
+    }
+
+    return adjusted;
+}
 
     public static double horizontalMag(Vector3d vec) {
         return vec.x * vec.x + vec.z * vec.z;

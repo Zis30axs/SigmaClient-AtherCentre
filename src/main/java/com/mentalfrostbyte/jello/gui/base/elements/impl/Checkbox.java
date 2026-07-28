@@ -31,7 +31,29 @@ public class Checkbox extends Element {
             this.field21370.changeDirection(!this.field21369 ? Animation.Direction.FORWARDS : Animation.Direction.BACKWARDS);
             if (var2) {
                 this.callUIHandlers();
+            } else {
+                // Programmatic set (panel rebuild / external sync): snap to end state.
+                // Fresh FORWARDS animations start at 0% which draws the checked look, so
+                // unchecked boxes flash "on" for ~70ms after every isHidden rebuild.
+                this.snapAnimationToCurrentState();
             }
+        } else if (!var2) {
+            // Same value as default (false): still need to finish the initial FORWARDS anim.
+            this.snapAnimationToCurrentState();
+        }
+    }
+
+    /** Jump the check animation to its settled frame for the current boolean value. */
+    private void snapAnimationToCurrentState() {
+        long now = System.currentTimeMillis();
+        if (this.field21369) {
+            // CHECKED uses BACKWARDS; percent 0 => full check visible.
+            this.field21370.direction = Animation.Direction.BACKWARDS;
+            this.field21370.reverseStartTime = new java.util.Date(now - this.field21370.reverseDuration - 1L);
+        } else {
+            // UNCHECKED uses FORWARDS; percent 1 => check fully hidden.
+            this.field21370.direction = Animation.Direction.FORWARDS;
+            this.field21370.startTime = new java.util.Date(now - this.field21370.duration - 1L);
         }
     }
 

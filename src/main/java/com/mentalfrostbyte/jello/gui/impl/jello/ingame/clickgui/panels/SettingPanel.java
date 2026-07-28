@@ -524,6 +524,10 @@ public class SettingPanel extends ScrollableContentPanel implements Class4342 {
 
         int var17 = var4;
         if (this.module instanceof ModuleWithModuleSettings var18) {
+            // Active sub-mode name drives which SubView is shown. Do NOT call
+            // calledOnEnable() from UI build/rebuild: that re-setStates modules and
+            // was stacking moduleStateListeners on every isHidden-triggered rebuild.
+            String activeModeName = var18.getStringSettingValueByName(var18.customModeName);
 
             for (Module var10 : var18.moduleArray) {
                 int var11 = 0;
@@ -532,6 +536,10 @@ public class SettingPanel extends ScrollableContentPanel implements Class4342 {
                 var12.setSize((var0, var1) -> var0.setWidthA(var1.getWidthA()));
 
                 for (Setting var14 : var10.getSettingMap().values()) {
+                    // Same hide rules as parent settings — otherwise gated colors/sliders
+                    // still occupy layout and the visibility signature rebuild thrashes.
+                    if (var14.isHidden())
+                        continue;
                     var11 = this.method13531(var12, var14, 20, var11, 20);
                 }
 
@@ -545,13 +553,19 @@ public class SettingPanel extends ScrollableContentPanel implements Class4342 {
                 }
 
                 var12.setHeightA(var11);
+                // Hide inactive modes immediately so rebuild never flashes every mode's options.
+                var12.setSelfVisible(var10.getName().equals(activeModeName));
                 this.addToList(var12);
                 this.field21224.put(var10, var12);
             }
 
-            var18.addModuleStateListener(
-                    (parent, module, enabled) -> this.field21224.get(module).setSelfVisible(enabled));
-            var18.calledOnEnable();
+            var18.clearModuleStateListeners();
+            var18.addModuleStateListener((parent, module, enabled) -> {
+                CustomGuiScreen subView = this.field21224.get(module);
+                if (subView != null) {
+                    subView.setSelfVisible(enabled);
+                }
+            });
         }
 
         this.addToList(new CustomGuiScreen(this, "extentionhack", 0, var4, 0, 20));

@@ -239,8 +239,10 @@ public class BlockFlySouthSideMode extends Module {
     public void onEnable() {
         placeCount = 0;
         ups = 0;
+        // Always clear any leftover outbound hold from a previous session / mode switch.
+        // Block Fly re-arms via place() -> setup() only when the option is on.
+        SSServerPacketManager.reset(true);
         if (mc.player == null) return;
-        if (blockFly.getCurrentValue()) SSServerPacketManager.reset(true);
         this.boxExpand = SSRandomUtils.nextDouble(0.1, 0.2);
 
         lastRotation = new SSRotation(mc.player.rotationYaw, mc.player.rotationPitch);
@@ -261,12 +263,17 @@ public class BlockFlySouthSideMode extends Module {
 
     @Override
     public void onDisable() {
-        if (mc.player == null) return;
+        // Must stop outbound hold even if the player entity is already gone — otherwise
+        // SSServerPacketManager keeps cancelling every C packet until the 100-tick watchdog.
+        SSServerPacketManager.reset(true);
+        if (mc.player == null) {
+            super.onDisable();
+            return;
+        }
         mc.player.inventory.currentItem = slot.slot();
         mc.player.inventory.currentItem = oldSlot;
         mc.gameSettings.keyBindSneak.setPressed(false);
         SSMovementUtils.resetMove();
-//        if (blockFly.getCurrentValue()) SSServerPacketManager.reset(false);
         super.onDisable();
     }
 
@@ -607,7 +614,14 @@ public class BlockFlySouthSideMode extends Module {
     public void onPostTick(EventRunTicks event) {
         if (!this.isEnabled()) return;
         if (!event.isPre()) {
-            if (blockFly.getCurrentValue() && SSServerPacketManager.deSyncTick > 16) {
+            // Block Fly off must not leave a stale deSyncing=true from a mid-session toggle.
+            if (!blockFly.getCurrentValue()) {
+                if (SSServerPacketManager.deSyncing) {
+                    SSServerPacketManager.reset(true);
+                }
+                return;
+            }
+            if (SSServerPacketManager.deSyncTick > 16) {
                 SSServerPacketManager.releaseTick(true);
             }
         }

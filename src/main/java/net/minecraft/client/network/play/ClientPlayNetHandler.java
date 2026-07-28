@@ -15,6 +15,7 @@ import com.mojang.authlib.GameProfile;
 import com.mojang.brigadier.CommandDispatcher;
 import com.viaversion.viaversion.api.protocol.version.ProtocolVersion;
 import de.florianmichael.vialoadingbase.ViaLoadingBase;
+import de.florianmichael.viamcp.fixes.IncompleteTagsFix;
 import io.netty.buffer.Unpooled;
 import java.io.File;
 import java.io.UnsupportedEncodingException;
@@ -39,6 +40,7 @@ import net.minecraft.block.Block;
 import net.minecraft.client.ClientBrandRetriever;
 import net.minecraft.client.GameSettings;
 import net.minecraft.client.Minecraft;
+import de.florianmichael.viamcp.fixes.PacketFixFor1_21Plus;
 import net.minecraft.client.audio.BeeAngrySound;
 import net.minecraft.client.audio.BeeFlightSound;
 import net.minecraft.client.audio.BeeSound;
@@ -387,6 +389,7 @@ public class ClientPlayNetHandler implements IClientPlayNetHandler {
      */
     public void handleJoinGame(SJoinGamePacket packetIn) {
         PacketThreadUtil.checkThreadAndEnqueue(packetIn, this, this.client);
+        PacketFixFor1_21Plus.resetPlayerInputState();
         ExtendedChunkDataStore.clearAll();
         this.client.playerController = new PlayerController(this.client, this);
 
@@ -911,6 +914,7 @@ public class ClientPlayNetHandler implements IClientPlayNetHandler {
      */
     public void onDisconnect(ITextComponent reason) {
         ServerConnectionErrorLogger.logDisconnect("ClientPlayNetHandler", field_243491_b, reason);
+        PacketFixFor1_21Plus.resetPlayerInputState();
         this.client.unloadWorld();
 
         if (this.guiScreenServer != null) {
@@ -1711,6 +1715,16 @@ public class ClientPlayNetHandler implements IClientPlayNetHandler {
         PacketThreadUtil.checkThreadAndEnqueue(packetIn, this, this.client);
         ITagCollectionSupplier itagcollectionsupplier = packetIn.getTags();
         Multimap<ResourceLocation, ResourceLocation> multimap = TagRegistryManager.validateTags(itagcollectionsupplier);
+
+        // ViaFabricPlus-style registry/tag validation bypass:
+        // 1.20.3/4 (and other non-native Via targets) can deliver incomplete UPDATE_TAGS
+        // after the configuration phase. Fill missing required tags from local vanilla
+        // data and continue instead of instant-kicking with missing_tags.
+        if (!multimap.isEmpty() && IncompleteTagsFix.shouldRelaxValidation()) {
+            LOGGER.warn("Incomplete server tags under Via, repairing instead of disconnecting. Missing: {}", (Object) multimap);
+            itagcollectionsupplier = IncompleteTagsFix.repair(itagcollectionsupplier, multimap);
+            multimap = TagRegistryManager.validateTags(itagcollectionsupplier);
+        }
 
         if (!multimap.isEmpty()) {
             LOGGER.warn("Incomplete server tags, disconnecting. Missing: {}", (Object) multimap);

@@ -58,6 +58,14 @@ public abstract class VoxelShape
 
     protected abstract DoubleList getValues(Direction.Axis axis);
 
+    /**
+     * Public alias of {@link #getValues(Direction.Axis)} matching modern
+     * {@code VoxelShape.getCoords(Axis)} used by Entity.collectCandidateStepUpHeights.
+     */
+    public DoubleList getCoords(Direction.Axis axis) {
+        return this.getValues(axis);
+    }
+
     public boolean isEmpty()
     {
         return this.part.isEmpty();

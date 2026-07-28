@@ -175,6 +175,11 @@ public class ModuleWithModuleSettings extends com.mentalfrostbyte.jello.module.M
         this.moduleStateListeners.add(listener);
     }
 
+    /** Drop UI listeners so SettingPanel rebuilds do not stack forever. */
+    public final void clearModuleStateListeners() {
+        this.moduleStateListeners.clear();
+    }
+
     public final void setModuleEnabled(com.mentalfrostbyte.jello.module.Module module, boolean enabled) {
         for (ModuleStateListener listener : this.moduleStateListeners) {
             listener.onModuleEnabled(this, module, enabled);

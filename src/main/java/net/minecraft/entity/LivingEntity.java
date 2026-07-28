@@ -27,6 +27,7 @@ import javax.annotation.Nullable;
 import com.viaversion.viaversion.api.protocol.version.ProtocolVersion;
 import de.florianmichael.vialoadingbase.ViaLoadingBase;
 import de.florianmichael.viamcp.fixes.PacketFixFor1_21Plus;
+import de.florianmichael.viamcp.fixes.PacketFixFor1_21_5Plus;
 import net.minecraft.advancements.CriteriaTriggers;
 import net.minecraft.block.BedBlock;
 import net.minecraft.block.Block;
@@ -2106,7 +2107,6 @@ public abstract class LivingEntity extends Entity {
     protected void handleFluidSneak() {
         this.setMotion(this.getMotion().add(0.0D, (double) -0.04F, 0.0D));
     }
-
     protected void handleFluidJump(ITag<Fluid> fluidTag) {
         this.setMotion(this.getMotion().add(0.0D, (double) 0.04F, 0.0D));
     }
@@ -2716,29 +2716,8 @@ public abstract class LivingEntity extends Entity {
         }
 
         Vector3d vector3d = this.getMotion();
-        double d1 = vector3d.x;
-        double d3 = vector3d.y;
-        double d5 = vector3d.z;
-
-        final var targetVersion = ViaLoadingBase.getInstance().getTargetVersion();
-
-        var _003 = targetVersion.newerThanOrEqualTo(ProtocolVersion.v1_9)
-                ? 0.003D
-                : 0.005D;
-
-        if (Math.abs(vector3d.x) < _003) {
-            d1 = 0.0D;
-        }
-
-        if (Math.abs(vector3d.y) < _003) {
-            d3 = 0.0D;
-        }
-
-        if (Math.abs(vector3d.z) < _003) {
-            d5 = 0.0D;
-        }
-
-        this.setMotion(d1, d3, d5);
+        // 1.21.5+: combined horizontal threshold (x*x+z*z < 9e-6); older: per-axis 0.003/0.005
+        this.setMotion(PacketFixFor1_21_5Plus.applyMovementThreshold(vector3d, this instanceof PlayerEntity));
         this.world.getProfiler().startSection("ai");
 
         if (this.isMovementBlocked()) {
@@ -2789,8 +2768,7 @@ public abstract class LivingEntity extends Entity {
 
         this.world.getProfiler().endSection();
         this.world.getProfiler().startSection("travel");
-        this.moveStrafing *= 0.98F;
-        this.moveForward *= 0.98F;
+        PacketFixFor1_21_5Plus.applyTravelInputFactors(this);
         this.updateElytra();
         AxisAlignedBB axisalignedbb = this.getBoundingBox();
         this.travel(new Vector3d((double) this.moveStrafing, (double) this.moveVertical, (double) this.moveForward));

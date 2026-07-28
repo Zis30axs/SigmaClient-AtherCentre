@@ -142,6 +142,8 @@ public class SettingGroup extends Element {
    private void rebuildSettingPanel() {
       int padding = 10;
       int headerHeight = 59;
+      // Keep the user's scroll position across conditional-setting rebuilds (Mark, Eagle, ...).
+      int preservedScroll = this.field20668 != null ? this.field20668.method13513() : 0;
       if (this.field20668 != null) {
          this.removeChildren(this.field20668);
       }
@@ -151,5 +153,8 @@ public class SettingGroup extends Element {
             this.width - padding * 2, this.height - headerHeight - padding, this.module
          )
       );
+      if (preservedScroll > 0) {
+         this.field20668.method13512(preservedScroll);
+      }
    }
 }

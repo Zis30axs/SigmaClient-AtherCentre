@@ -13,6 +13,7 @@ import com.mentalfrostbyte.jello.event.impl.player.movement.EventMotion;
 import com.mentalfrostbyte.jello.gui.base.JelloPortal;
 import com.viaversion.viaversion.api.protocol.version.ProtocolVersion;
 import de.florianmichael.viamcp.fixes.PacketFixFor1_21Plus;
+import de.florianmichael.viamcp.fixes.PacketFixFor1_21_5Plus;
 import net.minecraft.block.BlockState;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.audio.*;
@@ -104,7 +105,6 @@ public class ClientPlayerEntity extends AbstractClientPlayerEntity {
     private boolean prevHorizontalCollision;
     private boolean isCrouching;
     private boolean clientSneakState;
-    private boolean minorHorizontalCollision;
 
     /**
      * the last sprinting state sent to the server
@@ -918,18 +918,34 @@ public class ClientPlayerEntity extends AbstractClientPlayerEntity {
                     : this.collidedHorizontally;
             boolean flag6 = flag5 || hardHorizontalCollision || !canWaterSprint;
 
-            if (targetVersion.newerThan(ProtocolVersion.v1_21_4)) {
-                // 1.21.5+ split and reworked the stop conditions: blindness and riding
-                // now stop the sprint, item use no longer does
+            if (PacketFixFor1_21_5Plus.isInSprintStopBand_1_21_5_to_1_21_7()) {
+                // ViaFP shouldStopRunSprinting for 1.21.5-1.21.7:
+                // mobility/passenger/forward/food/(HC&&!minor)/(inWater&&!underWater)
+                // Swim path keeps the 1.21.5 rework (blindness + water presence).
                 boolean blindness = this.isPotionActive(Effects.BLINDNESS);
-
                 if (this.isSwimming()) {
                     if (blindness || this.isPassenger() || !this.isInWater()
                             || noForwardImpulse && !this.onGround && !this.movementInput.sneaking || !flag4) {
                         this.setSprinting(false);
                     }
-                } else if (blindness || this.isPassenger() || noForwardImpulse || !flag4
+                } else if (this.isPassenger() || noForwardImpulse || !flag4
                         || hardHorizontalCollision || !canWaterSprint) {
+                    this.setSprinting(false);
+                }
+            } else if (PacketFixFor1_21_5Plus.isInModernSprintStopBand()) {
+                // Modern LocalPlayer.shouldStopRunSprinting (1.21.9+ / >1.21.7):
+                // !isSprintingPossible(flying) || !forward || (HC && !minor)
+                // isSprintingPossible(~flying): !passenger (no vehicle sprint here) && food
+                //   && (flying || canWaterSprint-equivalent for shallow water on 1.21.10+)
+                boolean sprintingPossible = flag4 && !this.isPassenger() && canWaterSprint;
+                if (this.isSwimming()) {
+                    // shouldStopSwimSprinting: !isSprintingPossible(true) || !inWater || (!forward && !onGround && !shift) 
+                    boolean swimPossible = flag4 && !this.isPassenger();
+                    if (!swimPossible || !this.isInWater()
+                            || noForwardImpulse && !this.onGround && !this.movementInput.sneaking) {
+                        this.setSprinting(false);
+                    }
+                } else if (!sprintingPossible || noForwardImpulse || hardHorizontalCollision) {
                     this.setSprinting(false);
                 }
             } else if (targetVersion.olderThanOrEqualTo(ProtocolVersion.v1_14_1)
@@ -1133,7 +1149,6 @@ public class ClientPlayerEntity extends AbstractClientPlayerEntity {
             double d0 = this.getPosX();
             double d1 = this.getPosZ();
             super.move(typeIn, pos);
-            this.updateMinorHorizontalCollision(this.getPosX() - d0, this.getPosZ() - d1);
             this.updateAutoJump((float) (this.getPosX() - d0), (float) (this.getPosZ() - d1));
             return;
         }
@@ -1151,34 +1166,7 @@ public class ClientPlayerEntity extends AbstractClientPlayerEntity {
         double d0 = this.getPosX();
         double d1 = this.getPosZ();
         super.move(typeIn, eventMove.vector);
-        this.updateMinorHorizontalCollision(this.getPosX() - d0, this.getPosZ() - d1);
         this.updateAutoJump((float) (this.getPosX() - d0), (float) (this.getPosZ() - d1));
-    }
-
-    private void updateMinorHorizontalCollision(double movementX, double movementZ) {
-        if (JelloPortal.getVersion().olderThanOrEqualTo(ProtocolVersion.v1_17_1)
-                || this.movementInput == null) {
-            this.minorHorizontalCollision = false;
-            return;
-        }
-
-        double horizontalLengthSquared = movementX * movementX + movementZ * movementZ;
-        if (horizontalLengthSquared < 1.0E-5F) {
-            this.minorHorizontalCollision = false;
-            return;
-        }
-
-        float yawRadians = this.rotationYaw * ((float)Math.PI / 180.0F);
-        double sin = MathHelper.sin(yawRadians);
-        double cos = MathHelper.cos(yawRadians);
-        double inputX = (double)this.movementInput.moveStrafe * cos
-                - (double)this.movementInput.moveForward * sin;
-        double inputZ = (double)this.movementInput.moveForward * cos
-                + (double)this.movementInput.moveStrafe * sin;
-        double inputLengthSquared = inputX * inputX + inputZ * inputZ;
-        this.minorHorizontalCollision = inputLengthSquared >= 1.0E-5F
-                && Math.acos((inputX * movementX + inputZ * movementZ)
-                        / Math.sqrt(inputLengthSquared * horizontalLengthSquared)) < 0.13962634F;
     }
 
     public boolean isAutoJumpEnabled() {

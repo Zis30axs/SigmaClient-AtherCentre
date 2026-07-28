@@ -49,6 +49,14 @@ public final class PacketFixFor1_21Plus {
     private static final int INPUT_JUMP = 16;
     private static final int INPUT_SHIFT = 32;
     private static final int INPUT_SPRINT = 64;
+    /**
+     * Modern LocalPlayer only resends ServerboundPlayerInputPacket when
+     * {@code input.keyPresses} changes. Track the last sent flag byte here.
+     * {@link Byte#MIN_VALUE} is not a valid keyPresses mask so the first real
+     * input always flushes.
+     */
+    private static byte lastSentPlayerInputFlags = Byte.MIN_VALUE;
+    private static boolean hasSentPlayerInputFlags = false;
     private static final int DOUBLE_BYTES = 8;
     private static final int FLOAT_BYTES = 4;
     private static final String[] MOVEMENT_1_21_5_INPUT_PROTOCOLS = {
@@ -88,10 +96,11 @@ public final class PacketFixFor1_21Plus {
     }
 
     private static boolean shouldUseMovementFlags(UserConnection connection) {
+        // Version + PLAY only. Protocol-name matching was dropping HC flag rewrites on
+        // some 1.21.6+ pipelines that still speak modern movement flags.
         return isEnabled()
                 && isTargetAtLeast1_21_3Protocol()
-                && isPlayState(connection)
-                && hasProtocolNamed(connection, MOVEMENT_1_21_3_PROTOCOLS);
+                && isPlayState(connection);
     }
 
     public static boolean shouldUseVanilla1_21MovementCadence() {
@@ -99,11 +108,9 @@ public final class PacketFixFor1_21Plus {
     }
 
     public static boolean shouldUseVanilla1_21MovementPhysics() {
-        UserConnection connection = activeUserConnection();
-        return isEnabled()
-                && isTargetAtLeast1_21_3Protocol()
-                && isPlayState(connection)
-                && hasProtocolNamed(connection, MOVEMENT_1_21_3_PROTOCOLS);
+        // Client-side prediction must track JelloPortal target version even when the
+        // Via pipeline name set is incomplete; PLAY-state is not required for local physics.
+        return isEnabled() && isTargetAtLeast1_21_3Protocol();
     }
 
     public static boolean shouldUseGrimVanillaMovement() {
@@ -112,11 +119,7 @@ public final class PacketFixFor1_21Plus {
     }
 
     public static boolean shouldUseVanilla1_21_5InputPhysics() {
-        UserConnection connection = activeUserConnection();
-        return isEnabled()
-                && targetVersion().newerThanOrEqualTo(ProtocolVersion.v1_21_5)
-                && isPlayState(connection)
-                && hasProtocolNamed(connection, MOVEMENT_1_21_5_INPUT_PROTOCOLS);
+        return isEnabled() && targetVersion().newerThanOrEqualTo(ProtocolVersion.v1_21_5);
     }
 
     public static boolean shouldSendPlayerInput() {
@@ -176,6 +179,11 @@ public final class PacketFixFor1_21Plus {
 
         try {
             byte flags = playerInputFlagsFromMovementInput(player);
+            // Modern LocalPlayer.tick: only send when keyPresses changed vs lastSentInput.
+            if (hasSentPlayerInputFlags && flags == lastSentPlayerInputFlags) {
+                return true;
+            }
+
             ProtocolVersion targetVersion = targetVersion();
             Class<? extends Protocol> protocolClass = playerInputProtocol(targetVersion);
             if (!hasProtocol(connection, protocolClass)) {
@@ -192,11 +200,19 @@ public final class PacketFixFor1_21Plus {
                 wrapper.scheduleSendToServer(protocolClass);
             }
 
+            lastSentPlayerInputFlags = flags;
+            hasSentPlayerInputFlags = true;
             return true;
         } catch (Exception e) {
             LOGGER.warn("Failed to send 1.21+ player input packet", e);
             return false;
         }
+    }
+
+    /** Reset on world/connection change so the next join flushes a fresh input packet. */
+    public static void resetPlayerInputState() {
+        lastSentPlayerInputFlags = Byte.MIN_VALUE;
+        hasSentPlayerInputFlags = false;
     }
 
     public static boolean reportedSneaking(ClientPlayerEntity player) {
@@ -248,7 +264,16 @@ public final class PacketFixFor1_21Plus {
             flags |= reportedSneaking(player) ? INPUT_SHIFT : 0;
         }
 
-        flags |= player.isSprinting() ? INPUT_SPRINT : 0;
+        // Modern KeyboardInput / Input.sprint is the sprint KEY, not isSprinting() state.
+        // ViaFP sendInputPacket also writes playerInput.sprint() (key bit).
+        // Using sprint state desyncs PLAYER_INPUT from prediction (SprintE) when the
+        // key is held but collision stopped sprint, or double-tap sprint without key.
+        boolean sprintKeyDown = false;
+        Minecraft mc = Minecraft.getInstance();
+        if (mc != null && mc.gameSettings != null && mc.gameSettings.keyBindSprint != null) {
+            sprintKeyDown = mc.gameSettings.keyBindSprint.isKeyDown();
+        }
+        flags |= sprintKeyDown ? INPUT_SPRINT : 0;
         return (byte) flags;
     }
 
