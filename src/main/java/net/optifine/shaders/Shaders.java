@@ -5708,29 +5708,25 @@ public class Shaders
         return shaderPack == null ? null : shaderPack.getResourceAsStream(path);
     }
 
+    /** Selectable FXAA strengths, in cycle order. Each non-zero level needs a matching
+     *  assets/minecraft/shaders/post/fxaa_of_<level>x.json or it silently falls back to off. */
+    public static final int[] AA_LEVELS = new int[] {0, 2, 4, 8, 16};
+
     public static void nextAntialiasingLevel(boolean forward)
     {
-        if (forward)
-        {
-            configAntialiasingLevel += 2;
+        int i = 0;
 
-            if (configAntialiasingLevel > 4)
-            {
-                configAntialiasingLevel = 0;
-            }
-        }
-        else
+        for (int j = 0; j < AA_LEVELS.length; ++j)
         {
-            configAntialiasingLevel -= 2;
-
-            if (configAntialiasingLevel < 0)
+            if (AA_LEVELS[j] == configAntialiasingLevel)
             {
-                configAntialiasingLevel = 4;
+                i = j;
+                break;
             }
         }
 
-        configAntialiasingLevel = configAntialiasingLevel / 2 * 2;
-        configAntialiasingLevel = Config.limit(configAntialiasingLevel, 0, 4);
+        i = (i + (forward ? 1 : AA_LEVELS.length - 1)) % AA_LEVELS.length;
+        configAntialiasingLevel = AA_LEVELS[i];
     }
 
     public static void checkShadersModInstalled()
