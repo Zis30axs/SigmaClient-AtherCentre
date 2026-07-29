@@ -1148,8 +1148,8 @@ public abstract class PlayerEntity extends LivingEntity {
                 if (f > 0.0F || f1 > 0.0F) {
                     boolean flag = f2 > 0.9F;
                     boolean flag1 = false;
-                    int i = 0;
-                    i = i + EnchantmentHelper.getKnockbackModifier(this);
+                    int enchantKnockback = EnchantmentHelper.getKnockbackModifier(this);
+                    int i = enchantKnockback;
 
                     if (this.isSprinting() && flag) {
                         this.world.playSound((PlayerEntity) null, this.getPosX(), this.getPosY(), this.getPosZ(), SoundEvents.ENTITY_PLAYER_ATTACK_KNOCKBACK, this.getSoundCategory(), 1.0F, 1.0F);
@@ -1193,18 +1193,26 @@ public abstract class PlayerEntity extends LivingEntity {
                     boolean flag5 = targetEntity.attackEntityFrom(DamageSource.causePlayerDamage(this), f);
 
                     if (flag5) {
-                        EventKeepSprint eventKeepSprint = new EventKeepSprint(i > 0);
+                        // 1.21+ multipath: self-slow/KB impulse follows modern getKnockback
+                        // (no client enchant) + sprint-hit 0.5, not legacy enchant levels.
+                        boolean applyExtraKnockback = PacketFixFor1_21Plus.shouldApplyAttackSelfSlow(flag1, enchantKnockback);
+                        EventKeepSprint eventKeepSprint = new EventKeepSprint(applyExtraKnockback);
                         EventBus.call(eventKeepSprint);
                         if (eventKeepSprint.greater) {
+                            float knockbackStrength = PacketFixFor1_21Plus.attackKnockbackStrength(flag1, i);
                             if (targetEntity instanceof LivingEntity) {
-                                ((LivingEntity) targetEntity).applyKnockback((float) i * 0.5F, (double) MathHelper.sin(rotationYaw * ((float) Math.PI / 180F)), (double) (-MathHelper.cos(rotationYaw * ((float) Math.PI / 180F))));
+                                ((LivingEntity) targetEntity).applyKnockback(knockbackStrength, (double) MathHelper.sin(rotationYaw * ((float) Math.PI / 180F)), (double) (-MathHelper.cos(rotationYaw * ((float) Math.PI / 180F))));
                             } else {
-                                targetEntity.addVelocity((double) (-MathHelper.sin(rotationYaw * ((float) Math.PI / 180F)) * (float) i * 0.5F), 0.1D, (double) (MathHelper.cos(rotationYaw * ((float) Math.PI / 180F)) * (float) i * 0.5F));
+                                targetEntity.addVelocity((double) (-MathHelper.sin(rotationYaw * ((float) Math.PI / 180F)) * knockbackStrength), 0.1D, (double) (MathHelper.cos(rotationYaw * ((float) Math.PI / 180F)) * knockbackStrength));
                             }
 
                             this.setMotion(this.getMotion().mul(0.6D, 1.0D, 0.6D));
                             if (!Client.getInstance().moduleManager.getModuleByClass(AutoSprint.class).getBooleanValueFromSettingName("KeepSprint")) {
                                 this.setSprinting(false);
+                                // Flush STOP_SPRINTING immediately for both normal and sprinting attacks.
+                                if (this instanceof net.minecraft.client.entity.player.ClientPlayerEntity) {
+                                    PacketFixFor1_21Plus.flushSprintAfterAttack((net.minecraft.client.entity.player.ClientPlayerEntity) this);
+                                }
                             }
                         }
 
@@ -2299,3 +2307,4 @@ public abstract class PlayerEntity extends LivingEntity {
         }
     }
 }
+

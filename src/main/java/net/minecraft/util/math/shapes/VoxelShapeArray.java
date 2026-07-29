@@ -38,19 +38,19 @@ public final class VoxelShapeArray extends VoxelShape
 
     protected DoubleList getValues(Direction.Axis axis)
     {
-        switch (axis)
+        // if/else instead of switch(enum) so javac does not emit VoxelShapeArray\ switchmap
+        if (axis == Direction.Axis.X)
         {
-            case X:
-                return this.xPoints;
-
-            case Y:
-                return this.yPoints;
-
-            case Z:
-                return this.zPoints;
-
-            default:
-                throw new IllegalArgumentException();
+            return this.xPoints;
         }
+        if (axis == Direction.Axis.Y)
+        {
+            return this.yPoints;
+        }
+        if (axis == Direction.Axis.Z)
+        {
+            return this.zPoints;
+        }
+        throw new IllegalArgumentException();
     }
 }

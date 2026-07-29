@@ -127,32 +127,15 @@ public class MovementInputFromOptions extends MovementInput {
         this.jump = eventMoveInput.jumping;
         this.sneaking = eventMoveInput.sneaking;
 
-        // 1.21.5+: do NOT pre-normalize diagonal input here.  The server applies
-        // sneak slowdown to the RAW (1,1) input first, then getAbsoluteMotion's
-        // internal d0>1 check handles normalization.  Pre-normalizing would make
-        // sneaking diagonal 29% slower than the server expects.
+        // ViaFP MixinKeyboardInput (high-to-low): strip Vec2.normalized() on <=1.21.4.
+        // Upgrade path (low-to-high): on 1.21.5+ keep modern KeyboardInput normalize
+        // BEFORE sneak/item slowdown. Skipping it leaves raw (1,1)*0.3 into square
+        // compensation and makes sneak-diagonal ~sqrt(2) too fast (Grim Simulation).
+        PacketFixFor1_21Plus.normalizeRaw1_21_5MovementInput(this);
 
         if (shouldApplySneakSlowdown(forcedDown, this.sneaking)) {
             this.moveStrafe *= eventMoveInput.sneakFactor;
             this.moveForward *= eventMoveInput.sneakFactor;
-        }
-    }
-
-    /**
-     * 1.21.5+ normalizes the raw diagonal input before the slowdown factors are
-     * applied (diagonal becomes 0.7071 per axis via 1/sqrt(2)).
-     */
-    private static void normalizeDiagonalInput1_21_5(MovementInput input) {
-        if (JelloPortal.getVersion().olderThan(ProtocolVersion.v1_21_5)) {
-            return;
-        }
-
-        float lengthSquared = input.moveStrafe * input.moveStrafe + input.moveForward * input.moveForward;
-
-        if (lengthSquared > 1.0F) {
-            float inverseLength = (float) (1.0D / Math.sqrt((double) lengthSquared));
-            input.moveStrafe *= inverseLength;
-            input.moveForward *= inverseLength;
         }
     }
 
@@ -198,7 +181,9 @@ public class MovementInputFromOptions extends MovementInput {
 
         this.jump = this.gameSettings.keyBindJump.isKeyDown();
         this.sneaking = this.gameSettings.keyBindSneak.isKeyDown();
-        // 1.21.5+: no pre-normalization (see comment in tickMovement)
+
+        // Same 1.21.5+ KeyboardInput diagonal normalize as tickMovement (before sneak).
+        PacketFixFor1_21Plus.normalizeRaw1_21_5MovementInput(this);
 
         if (shouldApplySneakSlowdown(forcedDown, this.sneaking)) {
             float sneakFactor = getSneakSlowdownFactor();

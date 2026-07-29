@@ -384,7 +384,7 @@ public class ClientPlayerEntity extends AbstractClientPlayerEntity {
         }
     }
 
-    private void sendSprintingPacket() {
+    public void sendSprintingPacket() {
         boolean flag = this.isSprinting();
 
         if (flag != this.serverSprintState) {

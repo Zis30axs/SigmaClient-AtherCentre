@@ -8,6 +8,8 @@ import com.viaversion.viaversion.api.protocol.packet.ServerboundPacketType;
 import com.viaversion.viaversion.api.protocol.packet.State;
 import com.viaversion.viaversion.api.protocol.version.ProtocolVersion;
 import com.viaversion.viaversion.protocols.v1_21_2to1_21_4.packet.ServerboundPackets1_21_4;
+import com.viaversion.viaversion.protocols.v1_21_2to1_21_4.Protocol1_21_2To1_21_4;
+import com.viaversion.viabackwards.protocol.v1_21_2to1_21.Protocol1_21_2To1_21;
 import com.viaversion.viaversion.protocols.v1_21_4to1_21_5.Protocol1_21_4To1_21_5;
 import com.viaversion.viaversion.protocols.v1_21_4to1_21_5.packet.ServerboundPackets1_21_5;
 import com.viaversion.viaversion.protocols.v1_21_5to1_21_6.Protocol1_21_5To1_21_6;
@@ -122,15 +124,91 @@ public final class PacketFixFor1_21Plus {
         return isEnabled() && targetVersion().newerThanOrEqualTo(ProtocolVersion.v1_21_5);
     }
 
+    /**
+     * Modern 1.21+ client attack self-slow no longer reads item Knockback enchant locally.
+     * {@code LivingEntity.getKnockback} only runs {@code EnchantmentHelper.modifyKnockback}
+     * on {@code ServerLevel}; the multipath client uses {@code ATTACK_KNOCKBACK/2} plus the
+     * sprint-hit +0.5 added in {@code Player.attack} before {@code causeExtraKnockback}.
+     * ViaFabricPlus does not rewrite this on the high client. Invert that gate for 1.16 -> 1.21+.
+     *
+     * <p>Cut at {@code v1_21} to match the enchantment-component era (and Grim's client-version
+     * cutoff that forces item knockback level 0 for >= 1.21 clients). Prefer this lower tag over
+     * inventing 1.21.11-only semantics.
+     */
+    public static boolean shouldUseModernAttackSelfSlow() {
+        return isEnabled() && targetVersion().newerThanOrEqualTo(ProtocolVersion.v1_21);
+    }
+
+    /**
+     * Client-side portion of modern {@code LivingEntity.getKnockback}: {@code ATTACK_KNOCKBACK / 2}.
+     * 1.16 registers {@code generic.attack_knockback} on {@code MobEntity} only, so a player never
+     * carries it and the local multipath contribution is always 0 unless a server/plugin injects it.
+     */
+    private static float clientAttackKnockbackAttribute() {
+        return 0.0F;
+    }
+
+    /**
+     * Whether {@code causeExtraKnockback}-equivalent self slow / local KB impulse should run.
+     *
+     * @param sprintKnockbackHit sprinting with full attack strength (legacy flag1 / modern +0.5)
+     * @param enchantKnockbackLevels {@code EnchantmentHelper.getKnockbackModifier} (legacy only)
+     */
+    public static boolean shouldApplyAttackSelfSlow(boolean sprintKnockbackHit, int enchantKnockbackLevels) {
+        if (!shouldUseModernAttackSelfSlow()) {
+            return sprintKnockbackHit || enchantKnockbackLevels > 0;
+        }
+        // 1.16 players do not register ATTACK_KNOCKBACK; modern client attribute portion is 0
+        // unless a server/plugin injects it. Sprint-hit is the practical multipath trigger.
+        return sprintKnockbackHit || clientAttackKnockbackAttribute() > 0.0F;
+    }
+
+    /**
+     * Strength passed into modern {@code causeExtraKnockback} on the client multipath:
+     * attribute/2 + (sprintHit ? 0.5 : 0). Enchant knockback is server-only.
+     */
+    public static float modernAttackKnockbackStrength(boolean sprintKnockbackHit) {
+        float strength = clientAttackKnockbackAttribute();
+        if (sprintKnockbackHit) {
+            strength += 0.5F;
+        }
+        return strength;
+    }
+
+    /**
+     * Legacy uses integer knockback levels as {@code level * 0.5F}. Modern uses the float above.
+     */
+    public static float attackKnockbackStrength(boolean sprintKnockbackHit, int totalLegacyKnockbackLevels) {
+        if (shouldUseModernAttackSelfSlow()) {
+            return modernAttackKnockbackStrength(sprintKnockbackHit);
+        }
+        return totalLegacyKnockbackLevels * 0.5F;
+    }
+
+    /**
+     * After attack self-slow calls setSprinting(false), flush STOP_SPRINTING immediately.
+     * Modern vanilla emits the entity-action change before the next movement packet; without this,
+     * Grim can still predict the attack tick as sprinting for one tick.
+     * Works for both normal and sprinting attacks.
+     */
+    public static void flushSprintAfterAttack(ClientPlayerEntity player) {
+        if (player == null || !shouldUseModernAttackSelfSlow()) {
+            return;
+        }
+        player.sendSprintingPacket();
+    }
+
     public static boolean shouldSendPlayerInput() {
         return shouldSendPlayerInput(activeUserConnection());
     }
 
     private static boolean shouldSendPlayerInput(UserConnection connection) {
         ProtocolVersion targetVersion = targetVersion();
+        // PLAYER_INPUT exists since 1.21.2. Grim supportsEndTick() uses knownInput from it.
+        // Previously limited to 1.21.5+, which left 1.21.2-1.21.4 without key-derived input
+        // (ViaBackwards server-side synthesis is NOT in play when ViaMCP speaks native modern).
         return isEnabled()
                 && isAtLeast1_21_3Protocol(targetVersion)
-                && targetVersion.newerThanOrEqualTo(ProtocolVersion.v1_21_5)
                 && isPlayState(connection)
                 && hasProtocol(connection, playerInputProtocol(targetVersion));
     }
@@ -194,8 +272,16 @@ public final class PacketFixFor1_21Plus {
                 PacketWrapper wrapper = PacketWrapper.create(ServerboundPackets1_21_6.PLAYER_INPUT, connection);
                 wrapper.write(Types.BYTE, flags);
                 wrapper.scheduleSendToServer(protocolClass);
-            } else {
+            } else if (targetVersion.newerThanOrEqualTo(ProtocolVersion.v1_21_5)) {
                 PacketWrapper wrapper = PacketWrapper.create(ServerboundPackets1_21_5.PLAYER_INPUT, connection);
+                wrapper.write(Types.BYTE, flags);
+                wrapper.scheduleSendToServer(protocolClass);
+            } else if (targetVersion.newerThanOrEqualTo(ProtocolVersion.v1_21_4)) {
+                PacketWrapper wrapper = PacketWrapper.create(ServerboundPackets1_21_4.PLAYER_INPUT, connection);
+                wrapper.write(Types.BYTE, flags);
+                wrapper.scheduleSendToServer(protocolClass);
+            } else {
+                PacketWrapper wrapper = PacketWrapper.create(ServerboundPackets1_21_2.PLAYER_INPUT, connection);
                 wrapper.write(Types.BYTE, flags);
                 wrapper.scheduleSendToServer(protocolClass);
             }
@@ -228,6 +314,13 @@ public final class PacketFixFor1_21Plus {
         return canReportSneakInput(player);
     }
 
+    /**
+     * Modern KeyboardInput.tick: after assembling raw impulses, call
+     * {@code moveVector = new Vec2(strafe, forward).normalized()} when length &gt; 1.
+     * ViaFabricPlus strips that normalize on &lt;=1.21.4; inverted here for 1.21.5+.
+     * Must run before sneak/item slowdown so modifyInput's later 0.98+square path
+     * matches the server (sneak-diagonal otherwise overshoots by ~sqrt(2)).
+     */
     public static void normalizeRaw1_21_5MovementInput(MovementInput input) {
         if (!shouldUseVanilla1_21_5InputPhysics() || input == null) {
             return;
@@ -284,6 +377,15 @@ public final class PacketFixFor1_21Plus {
 
         if (targetVersion.newerThanOrEqualTo(ProtocolVersion.v1_21_5)) {
             return Protocol1_21_4To1_21_5.class;
+        }
+
+        if (targetVersion.newerThanOrEqualTo(ProtocolVersion.v1_21_4)) {
+            return Protocol1_21_2To1_21_4.class;
+        }
+
+        if (targetVersion.newerThanOrEqualTo(ProtocolVersion.v1_21_2)) {
+            // Same protocol class ClientTickFix uses for 1.21.2-family serverbound injection.
+            return Protocol1_21_2To1_21.class;
         }
 
         return null;

@@ -32,6 +32,7 @@ import net.minecraft.util.math.vector.Vector3d;
  *   <li>Entity.move minorHorizontalCollision assignment from collided movement</li>
  *   <li>Entity.collide modern step: fallingOntoGround + collectCandidateStepUpHeights(getCoords)</li>
  *   <li>MixinEntity.use1_20_6StepCollisionCalculation olderThanOrEqualTo(v1_20_5) inverted</li>
+ *   <li>MixinKeyboardInput: Vec2.normalized() only when newerThan 1.21.4 (invert keep on 1.21.5+)</li>
  * </ul>
  */
 public final class PacketFixFor1_21_5Plus {
@@ -183,15 +184,20 @@ public final class PacketFixFor1_21_5Plus {
      * Returns {strafe, forward}.
      */
     public static float[] modifyInputSpeedForSquareMovement(float strafe, float forward) {
+        // Modern LocalPlayer.modifyInputSpeedForSquareMovement:
+        //   length = |input|; unit = input/length; dist = distanceToUnitSquare(unit);
+        //   return unit * min(length * dist, 1.0F)
+        // The min cap matters: without it, raw (1,1) sneak paths overshoot by ~sqrt(2).
         float length = MathHelper.sqrt(strafe * strafe + forward * forward);
-        if (length < 1.0E-5F) {
-            return new float[]{0.0F, 0.0F};
+        if (length <= 0.0F) {
+            return new float[]{strafe, forward};
         }
 
         float normStrafe = strafe / length;
         float normForward = forward / length;
         float dist = distanceToUnitSquare(normStrafe, normForward);
-        return new float[]{normStrafe * dist * length, normForward * dist * length};
+        float cappedLength = Math.min(length * dist, 1.0F);
+        return new float[]{normStrafe * cappedLength, normForward * cappedLength};
     }
 
     /**
@@ -208,10 +214,10 @@ public final class PacketFixFor1_21_5Plus {
 
     /**
      * LivingEntity travel-input stage for the local player on 1.21.5+:
-     * base LivingEntity.applyInput multiplies by 0.98 for non-players; LocalPlayer
-     * folds 0.98 into modifyInput and then runs square compensation. Item/sneak are
-     * already applied earlier on this 1.16.5 client (movementInput), matching the
-     * effective non-item non-sneak path used while wall sprint-jumping.
+     * modern LocalPlayer.modifyInput does 0.98 -&gt; item -&gt; sneak -&gt; square(min).
+     * On this 1.16.5 client, KeyboardInput-equivalent diagonal normalize + sneak/item
+     * already ran on movementInput (see MovementInputFromOptions + livingTick); here
+     * we apply the remaining 0.98 and square compensation in modern order.
      */
     public static void applyTravelInputFactors(LivingEntity entity) {
         if (!shouldApplyTravelInputFactors() || entity == null) {
