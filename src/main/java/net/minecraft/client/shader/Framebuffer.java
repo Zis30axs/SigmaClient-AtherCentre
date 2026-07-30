@@ -141,7 +141,9 @@ public class Framebuffer
             GlStateManager.texImage2D(3553, 0, 6402, this.framebufferTextureWidth, this.framebufferTextureHeight, 0, 6402, 5126, (IntBuffer)null);
         }
 
-        this.setFramebufferFilter(9728);
+        // Keep whatever filter was set before (a resize goes through createBuffers, and losing the
+        // filter there would silently break effects that need GL_LINEAR, e.g. SMAA's final blend).
+        this.setFramebufferFilter(this.framebufferFilter == 0 ? 9728 : this.framebufferFilter);
         GlStateManager.bindTexture(this.framebufferTexture);
         GlStateManager.texImage2D(3553, 0, 32856, this.framebufferTextureWidth, this.framebufferTextureHeight, 0, 6408, 5121, (IntBuffer)null);
         GlStateManager.bindFramebuffer(FramebufferConstants.GL_FRAMEBUFFER, this.framebufferObject);

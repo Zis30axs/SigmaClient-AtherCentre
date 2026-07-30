@@ -132,7 +132,7 @@ public class ShaderGroup implements AutoCloseable
     {
         if (JSONUtils.isString(p_148027_1_))
         {
-            this.addFramebuffer(p_148027_1_.getAsString(), this.mainFramebufferWidth, this.mainFramebufferHeight);
+            this.addFramebuffer(p_148027_1_.getAsString(), this.mainFramebufferWidth, this.mainFramebufferHeight, false);
         }
         else
         {
@@ -140,13 +140,14 @@ public class ShaderGroup implements AutoCloseable
             String s = JSONUtils.getString(jsonobject, "name");
             int i = JSONUtils.getInt(jsonobject, "width", this.mainFramebufferWidth);
             int j = JSONUtils.getInt(jsonobject, "height", this.mainFramebufferHeight);
+            boolean flag = JSONUtils.getBoolean(jsonobject, "linear", false);
 
             if (this.mapFramebuffers.containsKey(s))
             {
                 throw new JSONException(s + " is already defined");
             }
 
-            this.addFramebuffer(s, i, j);
+            this.addFramebuffer(s, i, j, flag);
         }
     }
 
@@ -348,8 +349,24 @@ public class ShaderGroup implements AutoCloseable
 
     public void addFramebuffer(String name, int width, int height)
     {
+        this.addFramebuffer(name, width, height, false);
+    }
+
+    /**
+     * @param linear whether the target's colour texture is sampled with GL_LINEAR. Off by default,
+     * matching the vanilla GL_NEAREST behaviour; SMAA needs it on because its final pass relies on
+     * hardware bilinear filtering to blend a pixel with its neighbour.
+     */
+    public void addFramebuffer(String name, int width, int height, boolean linear)
+    {
         Framebuffer framebuffer = new Framebuffer(width, height, true, Minecraft.IS_RUNNING_ON_MAC);
         framebuffer.setFramebufferColor(0.0F, 0.0F, 0.0F, 0.0F);
+
+        if (linear)
+        {
+            framebuffer.setFramebufferFilter(9729);
+        }
+
         this.mapFramebuffers.put(name, framebuffer);
 
         if (width == this.mainFramebufferWidth && height == this.mainFramebufferHeight)
