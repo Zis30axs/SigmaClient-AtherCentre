@@ -1307,7 +1307,10 @@ public class GameRenderer implements IResourceManagerReloadListener, AutoCloseab
         } else if (this.mc.world == null) {
             return true;
         } else {
-            this.loadShader(new ResourceLocation("shaders/post/fxaa_of_" + p_setFxaaShader_1_ + "x.json"));
+            String s = p_setFxaaShader_1_ < 0
+                    ? "shaders/post/fxaa_cas_of_" + (-p_setFxaaShader_1_) + "x.json"
+                    : "shaders/post/fxaa_of_" + p_setFxaaShader_1_ + "x.json";
+            this.loadShader(new ResourceLocation(s));
 
             if (this.useShader) {
                 this.fxaaShaders.put(p_setFxaaShader_1_, this.shaderGroup);

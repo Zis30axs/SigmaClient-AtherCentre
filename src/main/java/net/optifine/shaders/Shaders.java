@@ -5708,9 +5708,10 @@ public class Shaders
         return shaderPack == null ? null : shaderPack.getResourceAsStream(path);
     }
 
-    /** Selectable FXAA strengths, in cycle order. Each non-zero level needs a matching
-     *  assets/minecraft/shaders/post/fxaa_of_<level>x.json or it silently falls back to off. */
-    public static final int[] AA_LEVELS = new int[] {0, 2, 4, 8, 16};
+    /** Selectable antialiasing modes, in cycle order.
+     *  Positive values are FXAA strengths and load assets/minecraft/shaders/post/fxaa_of_&lt;n&gt;x.json.
+     *  -16 is FXAA 16x plus contrast-adaptive sharpening (fxaa_cas_of_16x.json). */
+    public static final int[] AA_LEVELS = new int[] {0, 2, 4, 8, 16, -16};
 
     public static void nextAntialiasingLevel(boolean forward)
     {
