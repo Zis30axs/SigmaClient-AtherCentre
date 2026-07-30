@@ -181,9 +181,11 @@ public class ShaderMacros
     {
         StringBuilder stringbuilder = new StringBuilder();
 
-        if (Shaders.configAntialiasingLevel > 0)
+        if (Shaders.configAntialiasingLevel != 0 && !Shaders.isSmaaLevel(Shaders.configAntialiasingLevel))
         {
-            addMacroLine(stringbuilder, "MC_FXAA_LEVEL", Shaders.configAntialiasingLevel);
+            // Negative levels mean "that FXAA strength plus CAS"; the shader pack only cares
+            // about the strength, so report the magnitude. SMAA is not an FXAA level at all.
+            addMacroLine(stringbuilder, "MC_FXAA_LEVEL", Math.abs(Shaders.configAntialiasingLevel));
         }
 
         if (Shaders.configNormalMap)

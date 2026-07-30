@@ -633,25 +633,20 @@ public abstract class Entity implements INameable, ICommandSource {
 
             this.world.getProfiler().endSection();
             this.world.getProfiler().startSection("rest");
-            // ViaFP horizontalExactCollisionEqualness inverted: exact <=1.12.2, epsilon 1.13+
-            this.collidedHorizontally = PacketFixFor1_21_5Plus.axisCollided(pos.x, vector3d.x)
-                    || PacketFixFor1_21_5Plus.axisCollided(pos.z, vector3d.z);
-            // Modern Entity.move: minor HC from collided movement + post-input xxa/zza
-            PacketFixFor1_21_5Plus.updateMinorHorizontalCollision(this, vector3d);
+            boolean legacyExactHorizontalCollision = ViaLoadingBase.getInstance().getTargetVersion()
+                    .olderThanOrEqualTo(ProtocolVersion.v1_12_2);
+            this.collidedHorizontally = legacyExactHorizontalCollision
+                    ? pos.x != vector3d.x || pos.z != vector3d.z
+                    : !MathHelper.epsilonEquals(pos.x, vector3d.x)
+                    || !MathHelper.epsilonEquals(pos.z, vector3d.z);
             this.collidedVertically = pos.y != vector3d.y;
             this.onGround = this.collidedVertically && pos.y < 0.0D;
             BlockPos blockpos = this.getOnPosition();
             BlockState blockstate = this.world.getBlockState(blockpos);
             this.updateFallState(vector3d.y, this.onGround, blockstate, blockpos);
 
-            Vector3d vector3d1 = vector3d;
-            if (PacketFixFor1_21_5Plus.axisCollided(pos.x, vector3d.x)) {
-                this.setMotion(0.0D, this.getMotion().y, this.getMotion().z);
-            }
+            Vector3d vector3d1 = this.getMotion();
 
-            if (PacketFixFor1_21_5Plus.axisCollided(pos.z, vector3d.z)) {
-                this.setMotion(this.getMotion().x, this.getMotion().y, 0.0D);
-            }
             // 1.8 and 1.18.2+ zero each axis independently.  1.14-1.18.1 has a
             // quirk where the second setMotion restores the first axis from the
             // cached snapshot – the server has the same quirk so we must replicate it.

@@ -1,0 +1,53 @@
+{
+    "targets": [
+        { "name": "colorcopy", "linear": true },
+        { "name": "edges", "linear": true },
+        "weights",
+        { "name": "blended", "linear": true }
+    ],
+    "passes": [
+        {
+            "name": "copy_opaque",
+            "intarget": "minecraft:main",
+            "outtarget": "colorcopy"
+        },
+        {
+            "name": "smaa_edges",
+            "intarget": "colorcopy",
+            "outtarget": "edges",
+            "auxtargets": [
+                { "name": "DepthSampler", "id": "minecraft:main:depth" }
+            ],
+            "uniforms": [
+                { "name": "Threshold",            "values": [ 0.05 ] },
+                { "name": "PredicationThreshold", "values": [ 0.005 ] },
+                { "name": "PredicationStrength",  "values": [ 0.5 ] }
+            ]
+        },
+        {
+            "name": "smaa_weights",
+            "intarget": "edges",
+            "outtarget": "weights",
+            "auxtargets": [
+                { "name": "AreaSampler",   "id": "smaa_area",   "width": 160, "height": 560, "bilinear": true },
+                { "name": "SearchSampler", "id": "smaa_search", "width": 64,  "height": 16,  "bilinear": false }
+            ],
+            "uniforms": [
+                { "name": "MaxSearchSteps", "values": [ 32.0 ] }
+            ]
+        },
+        {
+            "name": "smaa_blend",
+            "intarget": "weights",
+            "outtarget": "blended",
+            "auxtargets": [
+                { "name": "ColorSampler", "id": "colorcopy" }
+            ]
+        },
+        {
+            "name": "copy_opaque",
+            "intarget": "blended",
+            "outtarget": "minecraft:main"
+        }
+    ]
+}
