@@ -135,11 +135,17 @@ public class AccountUI extends AnimatedIconPanel {
                         ClientColors.MID_GREY.getColor()
                 );
             } else {
+                // The stored session token, masked. Length is capped so a long JWT does
+                // not run past the row; the full value lives in the right-click viewer.
+                String token = this.selectedAccount.getToken();
+                String maskedToken = token != null && !token.isEmpty()
+                        ? "·".repeat(Math.min(44, token.length()))
+                        : "none";
                 RenderUtil.drawString(
                         ResourceRegistry.JelloLightFont14,
                         (float) (this.xA + 110),
                         (float) (this.yA + 50),
-                        "Token: " + "asdddddddddddddddddddddddddddddddddddddddddddd".replaceAll(".", Character.toString('·')),
+                        "Token: " + maskedToken,
                         ClientColors.MID_GREY.getColor()
                 );
             }

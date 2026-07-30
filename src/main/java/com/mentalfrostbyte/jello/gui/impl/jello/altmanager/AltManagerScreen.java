@@ -7,6 +7,8 @@ import com.mentalfrostbyte.jello.gui.base.alerts.ComponentType;
 import com.mentalfrostbyte.jello.gui.base.animations.Animation;
 import com.mentalfrostbyte.jello.gui.base.elements.impl.Alert;
 import com.mentalfrostbyte.jello.gui.base.elements.impl.Dropdown;
+import com.mentalfrostbyte.jello.gui.base.elements.impl.Text;
+import com.mentalfrostbyte.jello.gui.base.elements.impl.TextBlock;
 import com.mentalfrostbyte.jello.gui.base.elements.impl.VerticalScrollBar;
 import com.mentalfrostbyte.jello.gui.base.elements.impl.altmanager.AccountUI;
 import com.mentalfrostbyte.jello.gui.base.elements.impl.altmanager.Head;
@@ -42,7 +44,22 @@ public class AltManagerScreen extends Screen {
     private ScrollableContentPanel alts;
     private final ScrollableContentPanel altView;
     private Alert loginDialog;
+    private Alert tokenLoginDialog;
     private Alert deleteAlert;
+    /** Right-click menu: "View token" / "Delete" for one account. */
+    private Alert accountOptions;
+    private Text accountOptionsName;
+    /** Token viewer opened from the right-click menu. */
+    private Alert tokenDialog;
+    private Text tokenDialogName;
+    private Text tokenDialogMeta;
+    private TextBlock tokenDialogValue;
+    /**
+     * Account the right-click menu (and the dialogs it opens) currently acts on. Held
+     * here rather than captured per click so the confirm handlers can be registered
+     * once instead of stacking up another copy on every right-click.
+     */
+    private Account contextAccount;
     private final float field21014 = 0.65F;
     private final float field21015 = 1.0F - this.field21014;
     private final int titleOffset = 30;
@@ -78,7 +95,10 @@ public class AltManagerScreen extends Screen {
         }
 
         this.getLoginDialog();
+        this.tokenLoginAlert();
         this.deleteAltAlert();
+        this.accountOptionsAlert();
+        this.tokenAlert();
         this.addToList(
                 this.alts = new ScrollableContentPanel(
                         this,
@@ -200,14 +220,7 @@ public class AltManagerScreen extends Screen {
 
         accountUI.method13247((var2x, var3) -> {
             if (var3 != 0) {
-                this.deleteAlert.onPress(element -> {
-                    this.accountManager.removeAccountDirectly(accountUI.selectedAccount);
-                    this.info.handleSelectedAccount(null);
-                    this.head.handleSelectedAccount(null);
-                    this.updateAccountList(false);
-                });
-                this.deleteAlert.setFocused(true);
-                this.deleteAlert.method13603(true);
+                this.openAccountOptions(accountUI.selectedAccount);
             } else {
                 if (this.head.account == accountUI.selectedAccount && accountUI.method13168()) {
                     this.loginToAccount(accountUI);
@@ -296,6 +309,92 @@ public class AltManagerScreen extends Screen {
                 this.updateAccountList(false);
             }
         });
+        this.loginDialog.setButtonAction(3, () -> {
+            this.loginDialog.method13603(false);
+            this.tokenLoginDialog.setFocused(true);
+            this.tokenLoginDialog.method13603(true);
+        });
+    }
+
+    private void tokenLoginAlert() {
+        AlertComponent header = new AlertComponent(ComponentType.HEADER, "Token Login", 50);
+        AlertComponent firstLine = new AlertComponent(ComponentType.FIRST_LINE, "Login with your Minecraft", 15);
+        AlertComponent secondLine = new AlertComponent(ComponentType.FIRST_LINE, "session token here!", 25);
+        AlertComponent tokenInput = new AlertComponent(ComponentType.SECOND_LINE, "Token", 50);
+        AlertComponent login = new AlertComponent(ComponentType.BUTTON, "Login", 50);
+        AlertComponent back = new AlertComponent(ComponentType.BUTTON, "Back", 50);
+        this.addToList(this.tokenLoginDialog = new Alert(this, "Token login dialog", true, "Token Login",
+                header, firstLine, secondLine, tokenInput, login, back));
+
+        this.tokenLoginDialog.setButtonAction(0, this::loginWithToken);
+        this.tokenLoginDialog.setButtonAction(1, () -> {
+            this.tokenLoginDialog.method13603(false);
+            this.loginDialog.setFocused(true);
+            this.loginDialog.method13603(true);
+        });
+    }
+
+    private void loginWithToken() {
+        String token = this.normalizeToken(this.tokenLoginDialog.getInputMap().get("Token"));
+        if (token.isEmpty()) {
+            Client.getInstance().soundManager.play("error");
+            this.tokenLoginDialog.showLoginError("Token required",
+                    "Click here to go back and enter your token.");
+            return;
+        }
+
+        this.tokenLoginDialog.enterLoadingState("Logging in...",
+                "Validating your Minecraft session token.");
+        int generation = this.tokenLoginDialog.currentLoginGeneration();
+        new Thread(() -> {
+            Account account = new Account("Token Account", "Token ID", token);
+            boolean loginSucceeded;
+            try {
+                loginSucceeded = this.accountManager.login(account);
+                if (loginSucceeded) {
+                    account.setEmail(account.getKnownName());
+                    account.setPassword(account.getFormattedUUID());
+                    this.accountManager.updateAccount(account);
+                    this.accountManager.saveAlts();
+                }
+            } catch (Exception error) {
+                Client.getInstance().logger.error("Token login failed", error);
+                loginSucceeded = false;
+            }
+
+            boolean success = loginSucceeded;
+            Minecraft.getInstance().execute(() -> {
+                if (success) {
+                    this.updateAccountList(false);
+                }
+                if (this.tokenLoginDialog.currentLoginGeneration() != generation) {
+                    return;
+                }
+
+                if (!success) {
+                    Client.getInstance().soundManager.play("error");
+                    this.tokenLoginDialog.showLoginError("Token login failed",
+                            "Click here to go back and check the token.");
+                    return;
+                }
+
+                this.tokenLoginDialog.method13603(false);
+                Client.getInstance().soundManager.play("connect");
+            });
+        }, "TokenLogin").start();
+    }
+
+    private String normalizeToken(String token) {
+        if (token == null) {
+            return "";
+        }
+
+        String normalized = token.trim();
+        if (normalized.regionMatches(true, 0, "mctoken:", 0, "mctoken:".length())) {
+            normalized = normalized.substring("mctoken:".length());
+        }
+
+        return normalized.replace("\r", "").replace("\n", "").trim();
     }
 
     private void deleteAltAlert() {
@@ -305,6 +404,126 @@ public class AltManagerScreen extends Screen {
         AlertComponent button = new AlertComponent(ComponentType.BUTTON, "Delete", 50);
         this.addToList(
                 this.deleteAlert = new Alert(this, "delete", true, "Delete", title, firstLine, secondLine, button));
+        this.deleteAlert.onPress(element -> {
+            if (this.contextAccount == null) {
+                return;
+            }
+
+            this.accountManager.removeAccountDirectly(this.contextAccount);
+            this.contextAccount = null;
+            this.info.handleSelectedAccount(null);
+            this.head.handleSelectedAccount(null);
+            this.updateAccountList(false);
+        });
+    }
+
+    /**
+     * Right-click menu for a single account. Sits in front of the destructive action so
+     * a right-click is no longer a straight shot at the delete confirmation.
+     */
+    private void accountOptionsAlert() {
+        AlertComponent title = new AlertComponent(ComponentType.HEADER, "Account", 50);
+        AlertComponent name = new AlertComponent(ComponentType.FIRST_LINE, "", 30);
+        AlertComponent viewToken = new AlertComponent(ComponentType.BUTTON, "View token", 50);
+        AlertComponent delete = new AlertComponent(ComponentType.BUTTON, "Delete", 50);
+        this.addToList(
+                this.accountOptions = new Alert(this, "options", true, "Account", title, name, viewToken, delete));
+        this.accountOptionsName = this.accountOptions.getTextRows().get(1);
+
+        this.accountOptions.setButtonAction(0, () -> {
+            this.accountOptions.method13603(false);
+            this.openTokenDialog();
+        });
+        this.accountOptions.setButtonAction(1, () -> {
+            this.accountOptions.method13603(false);
+            this.deleteAlert.setFocused(true);
+            this.deleteAlert.method13603(true);
+        });
+    }
+
+    /**
+     * Token viewer. The value is masked until revealed and wider than the standard
+     * dialog because a Minecraft session token runs to several hundred characters;
+     * "Copy token" is the escape hatch when it is longer than the block can show.
+     */
+    private void tokenAlert() {
+        AlertComponent title = new AlertComponent(ComponentType.HEADER, "Token", 50);
+        AlertComponent name = new AlertComponent(ComponentType.FIRST_LINE, "", 15);
+        AlertComponent meta = new AlertComponent(ComponentType.FIRST_LINE, "", 25);
+        AlertComponent value = new AlertComponent(ComponentType.TEXT_BLOCK, "", 140);
+        AlertComponent copy = new AlertComponent(ComponentType.BUTTON, "Copy token", 50);
+        AlertComponent reveal = new AlertComponent(ComponentType.BUTTON, "Show token", 50);
+        this.addToList(
+                this.tokenDialog = new Alert(this, "token", true, "Token", 420, title, name, meta, value, copy, reveal));
+        this.tokenDialogName = this.tokenDialog.getTextRows().get(1);
+        this.tokenDialogMeta = this.tokenDialog.getTextRows().get(2);
+        this.tokenDialogValue = this.tokenDialog.getTextBlocks().get(0);
+
+        this.tokenDialog.setButtonAction(0, () -> {
+            String token = this.contextToken();
+            if (token.isEmpty()) {
+                Client.getInstance().soundManager.play("error");
+                return;
+            }
+
+            Minecraft.getInstance().keyboardListener.setClipboardString(token);
+            this.tokenDialogMeta.setText("Copied to clipboard");
+        });
+        this.tokenDialog.setButtonAction(1, () -> {
+            if (this.contextToken().isEmpty()) {
+                Client.getInstance().soundManager.play("error");
+                return;
+            }
+
+            boolean reveals = this.tokenDialogValue.isMasked();
+            this.tokenDialogValue.setMasked(!reveals);
+            this.tokenDialog.buttons.get(1).setText(!reveals ? "Show token" : "Hide token");
+        });
+    }
+
+    private void openAccountOptions(Account account) {
+        if (account == null) {
+            return;
+        }
+
+        this.contextAccount = account;
+        this.accountOptionsName.setText(account.getName());
+        this.accountOptions.setFocused(true);
+        this.accountOptions.method13603(true);
+    }
+
+    private void openTokenDialog() {
+        if (this.contextAccount == null) {
+            return;
+        }
+
+        String token = this.contextToken();
+        boolean hasToken = !token.isEmpty();
+        this.tokenDialogName.setText(this.contextAccount.getName());
+        this.tokenDialogMeta.setText(this.describeToken(this.contextAccount, token));
+        // Start masked so a token is never on screen by accident; the message shown for
+        // a token-less account is not a secret, so it is never masked.
+        this.tokenDialogValue.setMasked(hasToken);
+        this.tokenDialogValue.setContent(hasToken ? token : "Nothing stored yet - log in once with this account.");
+        this.tokenDialog.buttons.get(1).setText("Show token");
+        this.tokenDialog.setFocused(true);
+        this.tokenDialog.method13603(true);
+    }
+
+    private String contextToken() {
+        if (this.contextAccount == null || this.contextAccount.getToken() == null) {
+            return "";
+        }
+
+        return this.contextAccount.getToken();
+    }
+
+    private String describeToken(Account account, String token) {
+        if (token.isEmpty()) {
+            return "No session token";
+        }
+
+        return token.length() + " characters" + (account.hasRefreshToken() ? " - refresh token stored" : "");
     }
 
     @Override

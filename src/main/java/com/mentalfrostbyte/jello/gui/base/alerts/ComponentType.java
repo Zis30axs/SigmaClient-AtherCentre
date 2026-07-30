@@ -5,5 +5,7 @@ public enum ComponentType {
     SECOND_LINE,
     BUTTON,
     HEADER,
-    TEXTBOX
+    TEXTBOX,
+    /** Wrapped, read-only multi-line value (see {@code TextBlock}). */
+    TEXT_BLOCK
 }

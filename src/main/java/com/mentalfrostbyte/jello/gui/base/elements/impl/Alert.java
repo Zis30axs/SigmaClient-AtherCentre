@@ -49,6 +49,16 @@ public class Alert extends Element {
     private final List<Class9448> field21287 = new ArrayList<>();
 
     public List<Button> buttons = new ArrayList<>();
+    /** HEADER / FIRST_LINE rows in declaration order, so callers can retext them. */
+    private final List<Text> textRows = new ArrayList<>();
+    /** TEXT_BLOCK components in declaration order. */
+    private final List<TextBlock> textBlocks = new ArrayList<>();
+    /**
+     * Per-button overrides keyed by index into {@link #buttons}. A button with an
+     * override runs it instead of the default "close and notify listeners" path, and
+     * is responsible for closing the dialog itself if it should close.
+     */
+    private final Map<Integer, Runnable> buttonActions = new HashMap<>();
 
     // "Logging in" overlay: a spinner + status line that temporarily replaces the
     // dialog's option controls while an interactive login (Web login) is in flight.
@@ -67,8 +77,14 @@ public class Alert extends Element {
     private ExecutorService activeLoginExecutor;
 
     public Alert(CustomGuiScreen screen, String iconName, boolean var3, String name, AlertComponent... var5) {
+        this(screen, iconName, var3, name, 240, var5);
+    }
+
+    public Alert(CustomGuiScreen screen, String iconName, boolean var3, String name, int modalWidth,
+            AlertComponent... var5) {
         super(screen, iconName, 0, 0, Minecraft.getInstance().getMainWindow().getWidth(),
                 Minecraft.getInstance().getMainWindow().getHeight(), false);
+        this.field21284 = modalWidth;
         this.field21283 = var3;
         this.alertName = name;
         this.setHovered(false);
@@ -95,22 +111,38 @@ public class Alert extends Element {
                 if (component.componentType != ComponentType.SECOND_LINE) {
                     if (component.componentType != ComponentType.BUTTON) {
                         if (component.componentType == ComponentType.HEADER) {
-                            this.screen
-                                    .addToList(
-                                            new Text(
-                                                    this.screen,
-                                                    "Item" + var17,
-                                                    0,
-                                                    var18,
-                                                    this.field21284,
-                                                    component.field44773,
-                                                    new ColorHelper(
-                                                            ClientColors.DEEP_TEAL.getColor(),
-                                                            ClientColors.DEEP_TEAL.getColor(),
-                                                            ClientColors.DEEP_TEAL.getColor(),
-                                                            ClientColors.DEEP_TEAL.getColor()),
-                                                    component.text,
-                                                    ResourceRegistry.JelloLightFont36));
+                            Text header = new Text(
+                                    this.screen,
+                                    "Item" + var17,
+                                    0,
+                                    var18,
+                                    this.field21284,
+                                    component.field44773,
+                                    new ColorHelper(
+                                            ClientColors.DEEP_TEAL.getColor(),
+                                            ClientColors.DEEP_TEAL.getColor(),
+                                            ClientColors.DEEP_TEAL.getColor(),
+                                            ClientColors.DEEP_TEAL.getColor()),
+                                    component.text,
+                                    ResourceRegistry.JelloLightFont36);
+                            this.screen.addToList(header);
+                            this.textRows.add(header);
+                        } else if (component.componentType == ComponentType.TEXT_BLOCK) {
+                            TextBlock block = new TextBlock(
+                                    this.screen,
+                                    "Item" + var17,
+                                    0,
+                                    var18,
+                                    this.field21284,
+                                    component.field44773,
+                                    new ColorHelper(
+                                            ClientColors.MID_GREY.getColor(), ClientColors.MID_GREY.getColor(),
+                                            ClientColors.MID_GREY.getColor(), ClientColors.DEEP_TEAL.getColor()),
+                                    ResourceRegistry.JelloLightFont14,
+                                    14);
+                            block.setContent(component.text);
+                            this.screen.addToList(block);
+                            this.textBlocks.add(block);
                         }
                     } else {
                         Button button;
@@ -119,6 +151,13 @@ public class Alert extends Element {
                         this.buttons.add(button);
                         button.field20586 = 4;
                         button.onClick((var1x, var2x) -> {
+                            Runnable action = this.buttonActions.get(this.indexOfButton(button));
+                            if (action != null) {
+                                this.inputMap = this.method13599();
+                                action.run();
+                                return;
+                            }
+
                             switch (button.text) {
                                 case "Cookie login" -> {
                                     File file = FileUtil.getFileFromDialog();
@@ -197,10 +236,8 @@ public class Alert extends Element {
                                                         return;
                                                     }
                                                     Client.getInstance().soundManager.play("error");
-                                                    this.setStatus("Login didn't complete",
+                                                    this.showLoginError("Login didn't complete",
                                                             "Click here to go back and try again.");
-                                                    this.loginErrored = true;
-                                                    this.loadingSpinner.setHovered(false);
                                                 });
                                                 return null;
                                             })
@@ -210,32 +247,6 @@ public class Alert extends Element {
                                                     this.activeLoginExecutor = null;
                                                 }
                                             });
-                                }
-                                case "Token login" -> {
-                                    this.inputMap = this.method13599();
-                                    String token = this.inputMap.get("Email");
-                                    if (token != null && !token.isEmpty()) {
-                                        new Thread(() -> {
-                                            Account account = new Account("Token Account", "Token ID", token);
-                                            try {
-                                                if (Client.getInstance().accountManager.login(account)) {
-                                                    if (!Client.getInstance().accountManager.containsAccount(account)) {
-                                                        Client.getInstance().accountManager.updateAccount(account);
-                                                    }
-                                                    Minecraft.getInstance().execute(() -> {
-                                                        this.method13603(false);
-                                                        AltManagerScreen.instance.updateAccountList(false);
-                                                    });
-                                                } else {
-                                                    Client.getInstance().soundManager.play("error");
-                                                }
-                                            } catch (Exception e) {
-                                                Client.getInstance().soundManager.play("error");
-                                            }
-                                        }).start();
-                                    } else {
-                                        Client.getInstance().soundManager.play("error");
-                                    }
                                 }
                                 case "Random login" -> this.loginWithRandomOfflineAccount();
                                 default -> this.onButtonClick();
@@ -253,26 +264,29 @@ public class Alert extends Element {
                         if (component.text.contains("Email")) {
                             var8 = var22;
                         }
+                        if (component.text.contains("Token")) {
+                            var22.setCensorText(true);
+                        }
                     } else {
                         var9 = var22;
                         var22.setCensorText(true);
                     }
                 }
             } else {
-                this.screen
-                        .addToList(
-                                new Text(
-                                        this.screen,
-                                        "Item" + var17,
-                                        0,
-                                        var18,
-                                        this.field21284,
-                                        component.field44773,
-                                        new ColorHelper(
-                                                ClientColors.MID_GREY.getColor(), ClientColors.MID_GREY.getColor(),
-                                                ClientColors.MID_GREY.getColor(), ClientColors.MID_GREY.getColor()),
-                                        component.text,
-                                        ResourceRegistry.JelloLightFont20));
+                Text line = new Text(
+                        this.screen,
+                        "Item" + var17,
+                        0,
+                        var18,
+                        this.field21284,
+                        component.field44773,
+                        new ColorHelper(
+                                ClientColors.MID_GREY.getColor(), ClientColors.MID_GREY.getColor(),
+                                ClientColors.MID_GREY.getColor(), ClientColors.MID_GREY.getColor()),
+                        component.text,
+                        ResourceRegistry.JelloLightFont20);
+                this.screen.addToList(line);
+                this.textRows.add(line);
             }
 
             var18 += component.field44773 + 10;
@@ -377,6 +391,14 @@ public class Alert extends Element {
         if (this.statusHint != null) {
             this.statusHint.setText(hint != null ? hint : "");
             this.centerStatusLine(this.statusHint, this.statusHint.getText());
+        }
+    }
+
+    public void showLoginError(String message, String hint) {
+        this.enterLoadingState(message, hint);
+        this.loginErrored = true;
+        if (this.loadingSpinner != null) {
+            this.loadingSpinner.setHovered(false);
         }
     }
 
@@ -485,6 +507,39 @@ public class Alert extends Element {
 
     public Map<String, String> getInputMap() {
         return this.inputMap;
+    }
+
+    /**
+     * HEADER and FIRST_LINE rows in the order they were declared. Callers retext these
+     * to fill a reusable dialog in before showing it.
+     */
+    public List<Text> getTextRows() {
+        return this.textRows;
+    }
+
+    /** TEXT_BLOCK components in the order they were declared. */
+    public List<TextBlock> getTextBlocks() {
+        return this.textBlocks;
+    }
+
+    /**
+     * Overrides what the button at {@code buttonIndex} does. The action replaces the
+     * default close-and-notify behaviour, so an action that should dismiss the dialog
+     * must call {@link #method13603(boolean)} itself.
+     */
+    public void setButtonAction(int buttonIndex, Runnable action) {
+        this.buttonActions.put(buttonIndex, action);
+    }
+
+    /** Identity lookup: {@link CustomGuiScreen#equals} compares by name, not instance. */
+    private int indexOfButton(Button button) {
+        for (int i = 0; i < this.buttons.size(); i++) {
+            if (this.buttons.get(i) == button) {
+                return i;
+            }
+        }
+
+        return -1;
     }
 
     public void onButtonClick() {

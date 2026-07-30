@@ -8,11 +8,11 @@ import com.viaversion.viaversion.api.protocol.packet.ServerboundPacketType;
 import com.viaversion.viaversion.api.protocol.packet.State;
 import com.viaversion.viaversion.api.protocol.version.ProtocolVersion;
 import com.viaversion.viaversion.protocols.v1_21_2to1_21_4.packet.ServerboundPackets1_21_4;
-import com.viaversion.viaversion.protocols.v1_21_2to1_21_4.Protocol1_21_2To1_21_4;
 import com.viaversion.viabackwards.protocol.v1_21_2to1_21.Protocol1_21_2To1_21;
-import com.viaversion.viaversion.protocols.v1_21_4to1_21_5.Protocol1_21_4To1_21_5;
+import com.viaversion.viabackwards.protocol.v1_21_4to1_21_2.Protocol1_21_4To1_21_2;
+import com.viaversion.viabackwards.protocol.v1_21_5to1_21_4.Protocol1_21_5To1_21_4;
+import com.viaversion.viabackwards.protocol.v1_21_6to1_21_5.Protocol1_21_6To1_21_5;
 import com.viaversion.viaversion.protocols.v1_21_4to1_21_5.packet.ServerboundPackets1_21_5;
-import com.viaversion.viaversion.protocols.v1_21_5to1_21_6.Protocol1_21_5To1_21_6;
 import com.viaversion.viaversion.protocols.v1_21_5to1_21_6.packet.ServerboundPackets1_21_6;
 import com.viaversion.viaversion.protocols.v1_21to1_21_2.packet.ServerboundPackets1_21_2;
 import com.viaversion.viaversion.api.type.Types;
@@ -392,17 +392,26 @@ public final class PacketFixFor1_21Plus {
         return (byte) flags;
     }
 
+    /**
+     * Injection point for the synthetic PLAYER_INPUT, same rule as {@link ClientTickFix}:
+     * this client is always the older side, so the pipeline holds the <b>ViaBackwards</b>
+     * {@code Protocol<server>To<client>} nodes. The ViaVersion classes with mirrored names
+     * ({@code Protocol1_21_5To1_21_6} etc.) are the newer-client-to-older-server direction and
+     * are never present here - picking one makes {@link #hasProtocol} fail, which silently
+     * dropped PLAYER_INPUT (and Grim's knownInput with it) on every target above 1.21.3.
+     */
     private static Class<? extends Protocol> playerInputProtocol(ProtocolVersion targetVersion) {
         if (targetVersion.newerThanOrEqualTo(ProtocolVersion.v1_21_6)) {
-            return Protocol1_21_5To1_21_6.class;
+            // 1.21.7 - 1.21.11 add no serverbound play id changes, so this rung covers them too.
+            return Protocol1_21_6To1_21_5.class;
         }
 
         if (targetVersion.newerThanOrEqualTo(ProtocolVersion.v1_21_5)) {
-            return Protocol1_21_4To1_21_5.class;
+            return Protocol1_21_5To1_21_4.class;
         }
 
         if (targetVersion.newerThanOrEqualTo(ProtocolVersion.v1_21_4)) {
-            return Protocol1_21_2To1_21_4.class;
+            return Protocol1_21_4To1_21_2.class;
         }
 
         if (targetVersion.newerThanOrEqualTo(ProtocolVersion.v1_21_2)) {
