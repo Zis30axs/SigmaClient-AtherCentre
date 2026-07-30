@@ -140,6 +140,25 @@ public final class PacketFixFor1_21Plus {
     }
 
     /**
+     * Whether the attack self-slow must run exactly as vanilla does, ignoring keep-sprint overrides.
+     *
+     * <p>In {@code Player.causeExtraKnockback} the horizontal {@code 0.6} multiplier and
+     * {@code setSprinting(false)} live inside the same {@code strength > 0} branch, so vanilla can
+     * only ever do both or neither - 1.20.1 had the identical coupling inline in {@code attack}.
+     * A client that applies neither while still reporting itself as sprinting has no vanilla
+     * equivalent, and a modern anticheat that mandates the slow for a full-strength sprint hit
+     * cannot reproduce that movement.
+     *
+     * <p>Keep-sprint overrides are a legacy (1.8/1.9 era) trick, so they stay honoured below 1.21
+     * and are ignored from 1.21 onwards. Losing sprint for that tick is not a real cost: the sprint
+     * key is still held, so {@code livingTick} re-acquires sprint before {@code travel} runs, and
+     * {@code sendSprintingPacket} then collapses the change to zero packets for the tick.
+     */
+    public static boolean enforceVanillaAttackSelfSlow() {
+        return shouldUseModernAttackSelfSlow();
+    }
+
+    /**
      * Client-side portion of modern {@code LivingEntity.getKnockback}: {@code ATTACK_KNOCKBACK / 2}.
      * 1.16 registers {@code generic.attack_knockback} on {@code MobEntity} only, so a player never
      * carries it and the local multipath contribution is always 0 unless a server/plugin injects it.
@@ -185,18 +204,21 @@ public final class PacketFixFor1_21Plus {
         return totalLegacyKnockbackLevels * 0.5F;
     }
 
-    /**
-     * After attack self-slow calls setSprinting(false), flush STOP_SPRINTING immediately.
-     * Modern vanilla emits the entity-action change before the next movement packet; without this,
-     * Grim can still predict the attack tick as sprinting for one tick.
-     * Works for both normal and sprinting attacks.
+    /*
+     * There is deliberately no flushSprintAfterAttack() here.
+     *
+     * Player.attack only calls setSprinting(false) locally; the PLAYER_COMMAND action is emitted by
+     * LocalPlayer#sendPosition -> sendIsSprintingIfNeeded at the top of the movement send, so it
+     * still reaches the server ahead of that tick's movement packet. ViaFabricPlus keeps that
+     * placement for every target version - it only suppresses or relocates the call (MixinLocalPlayer
+     * removeSprintingPacket / sendSneakingAfterSprinting) and never adds a sprint packet inside the
+     * attack path. ClientPlayerEntity#sendSprintingPacket inside sendMovementPackets is the
+     * equivalent seam here.
+     *
+     * Flushing at attack time instead produced two deviations from a real 1.21+ client: an entity
+     * action wedged between the interact and the swing packet, and a STOP_SPRINTING/START_SPRINTING
+     * pair inside a single tick whenever that same tick's livingTick re-acquired sprint.
      */
-    public static void flushSprintAfterAttack(ClientPlayerEntity player) {
-        if (player == null || !shouldUseModernAttackSelfSlow()) {
-            return;
-        }
-        player.sendSprintingPacket();
-    }
 
     public static boolean shouldSendPlayerInput() {
         return shouldSendPlayerInput(activeUserConnection());

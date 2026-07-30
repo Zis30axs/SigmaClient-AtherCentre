@@ -1200,7 +1200,10 @@ public abstract class PlayerEntity extends LivingEntity {
                         boolean applyExtraKnockback = PacketFixFor1_21Plus.shouldApplyAttackSelfSlow(flag1, enchantKnockback);
                         EventKeepSprint eventKeepSprint = new EventKeepSprint(applyExtraKnockback);
                         EventBus.call(eventKeepSprint);
-                        if (eventKeepSprint.greater) {
+                        // causeExtraKnockback keeps the 0.6 slow and setSprinting(false) in one
+                        // branch, so 1.21+ targets must not let a module drop just one of them.
+                        boolean vanillaSelfSlow = PacketFixFor1_21Plus.enforceVanillaAttackSelfSlow();
+                        if (vanillaSelfSlow ? applyExtraKnockback : eventKeepSprint.greater) {
                             float knockbackStrength = PacketFixFor1_21Plus.attackKnockbackStrength(flag1, i);
                             if (targetEntity instanceof LivingEntity) {
                                 ((LivingEntity) targetEntity).applyKnockback(knockbackStrength, (double) MathHelper.sin(rotationYaw * ((float) Math.PI / 180F)), (double) (-MathHelper.cos(rotationYaw * ((float) Math.PI / 180F))));
@@ -1209,12 +1212,15 @@ public abstract class PlayerEntity extends LivingEntity {
                             }
 
                             this.setMotion(this.getMotion().mul(0.6D, 1.0D, 0.6D));
-                            if (!Client.getInstance().moduleManager.getModuleByClass(AutoSprint.class).getBooleanValueFromSettingName("KeepSprint")) {
+                            if (vanillaSelfSlow
+                                    || !Client.getInstance().moduleManager.getModuleByClass(AutoSprint.class).getBooleanValueFromSettingName("KeepSprint")) {
+                                // Modern Player.attack only flips the local flag here; the entity action is
+                                // emitted once per tick by ClientPlayerEntity#sendMovementPackets (mirroring
+                                // LocalPlayer#sendPosition -> sendIsSprintingIfNeeded), still ahead of the
+                                // movement packet. Never flush it inline: that puts an entity action between
+                                // the interact and the swing packet, and it double-sends STOP/START when the
+                                // same tick re-acquires sprint. ViaFabricPlus never emits sprint mid-attack.
                                 this.setSprinting(false);
-                                // Flush STOP_SPRINTING immediately for both normal and sprinting attacks.
-                                if (this instanceof net.minecraft.client.entity.player.ClientPlayerEntity) {
-                                    PacketFixFor1_21Plus.flushSprintAfterAttack((net.minecraft.client.entity.player.ClientPlayerEntity) this);
-                                }
                             }
                         }
 
