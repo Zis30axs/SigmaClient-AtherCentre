@@ -1,0 +1,23 @@
+{
+    "targets": [
+        "swap"
+    ],
+    "passes": [
+        {
+            "name": "fxaa",
+            "intarget": "minecraft:main",
+            "outtarget": "swap",
+            "uniforms": [
+                { "name": "SpanMax",          "values": [ 8.0 ] },
+                { "name": "ReduceMul",        "values": [ 0.0625 ] },
+                { "name": "EdgeThreshold",    "values": [ 0.0833 ] },
+                { "name": "EdgeThresholdMin", "values": [ 0.0208 ] }
+            ]
+        },
+        {
+            "name": "blit",
+            "intarget": "swap",
+            "outtarget": "minecraft:main"
+        }
+    ]
+}

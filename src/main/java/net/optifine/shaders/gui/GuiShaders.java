@@ -386,14 +386,7 @@ public class GuiShaders extends GuiScreenOF
 
     public static String toStringAa(int value)
     {
-        if (value == 2)
-        {
-            return "FXAA 2x";
-        }
-        else
-        {
-            return value == 4 ? "FXAA 4x" : Lang.getOff();
-        }
+        return value <= 0 ? Lang.getOff() : "FXAA " + value + "x";
     }
 
     public static String toStringValue(float val, float[] values, String[] names)

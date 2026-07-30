@@ -134,7 +134,7 @@ public class GameRenderer implements IResourceManagerReloadListener, AutoCloseab
     private int serverWaitTimeCurrent = 0;
     private float avgServerTimeDiff = 0.0F;
     private float avgServerTickDiff = 0.0F;
-    private ShaderGroup[] fxaaShaders = new ShaderGroup[10];
+    private final Map<Integer, ShaderGroup> fxaaShaders = new HashMap<>();
     private boolean guiLoadingVisible = false;
     // ── FXAA anti-aliasing driven by GameSettings.ofAaLevel ──
     // Hardware MSAA is not usable here (the world renders into an FBO whose depth is
@@ -1290,25 +1290,45 @@ public class GameRenderer implements IResourceManagerReloadListener, AutoCloseab
     public boolean setFxaaShader(int p_setFxaaShader_1_) {
         if (!GLX.isUsingFBOs()) {
             return false;
-        } else if (this.shaderGroup != null && this.shaderGroup != this.fxaaShaders[2] && this.shaderGroup != this.fxaaShaders[4]) {
+        } else if (this.shaderGroup != null && !this.fxaaShaders.containsValue(this.shaderGroup)) {
+            // A non-FXAA post shader (entity/manual) owns shaderGroup right now; leave it alone.
             return true;
-        } else if (p_setFxaaShader_1_ != 2 && p_setFxaaShader_1_ != 4) {
+        } else if (!isFxaaLevel(p_setFxaaShader_1_)) {
             if (this.shaderGroup == null) {
                 return true;
             } else {
                 this.shaderGroup.close();
+                this.fxaaShaders.values().remove(this.shaderGroup);
                 this.shaderGroup = null;
                 return true;
             }
-        } else if (this.shaderGroup != null && this.shaderGroup == this.fxaaShaders[p_setFxaaShader_1_]) {
+        } else if (this.shaderGroup != null && this.shaderGroup == this.fxaaShaders.get(p_setFxaaShader_1_)) {
             return true;
         } else if (this.mc.world == null) {
             return true;
         } else {
             this.loadShader(new ResourceLocation("shaders/post/fxaa_of_" + p_setFxaaShader_1_ + "x.json"));
-            this.fxaaShaders[p_setFxaaShader_1_] = this.shaderGroup;
+
+            if (this.useShader) {
+                this.fxaaShaders.put(p_setFxaaShader_1_, this.shaderGroup);
+            }
+
             return this.useShader;
         }
+    }
+
+    private static boolean isFxaaLevel(int level) {
+        if (level == 0) {
+            return false;
+        }
+
+        for (int aaLevel : Shaders.AA_LEVELS) {
+            if (aaLevel == level) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public IResourceType getResourceType() {
