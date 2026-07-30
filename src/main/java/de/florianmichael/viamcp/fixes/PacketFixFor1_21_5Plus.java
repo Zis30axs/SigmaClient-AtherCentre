@@ -376,6 +376,30 @@ public final class PacketFixFor1_21_5Plus {
         return version != null && version.newerThan(ProtocolVersion.v1_21_7);
     }
 
+    /**
+     * 1.21.10 added the shallow-water term of {@code LocalPlayer.isSprintingPossible}:
+     * {@code allowedInShallowWater || !isInShallowWater()}, where
+     * {@code Entity.isInShallowWater() == isInWater() && !isUnderWater()}.
+     * <p>
+     * This is a new <b>restriction</b>, not an exemption: on 1.21.10+ a run sprint is impossible
+     * while waist-deep, because {@code canStartSprinting} and {@code shouldStopRunSprinting} both
+     * pass {@code abilities.flying} (false on foot). Only the swim path passes {@code true}, and
+     * that needs the eyes submerged. ViaFabricPlus agrees - its
+     * {@code isSprintingPossible1_21_10} override only replaces the method for
+     * {@code olderThanOrEqualTo(v1_21_9)} targets and leaves 1.21.10+ on vanilla behaviour.
+     *
+     * @param allowedInShallowWater vanilla's parameter: {@code true} only on the swim-sprint path
+     */
+    public static boolean isShallowWaterSprintAllowed(boolean allowedInShallowWater) {
+        if (allowedInShallowWater) {
+            return true;
+        }
+
+        ProtocolVersion version = JelloPortal.getVersion();
+        // <=1.12.2 had no shallow-water sprint restriction of any kind.
+        return version != null && version.olderThanOrEqualTo(ProtocolVersion.v1_12_2);
+    }
+
     public static boolean isPlayerEntity(Entity entity) {
         return entity instanceof PlayerEntity;
     }

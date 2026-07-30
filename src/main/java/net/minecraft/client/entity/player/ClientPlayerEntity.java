@@ -894,9 +894,11 @@ public class ClientPlayerEntity extends AbstractClientPlayerEntity {
             }
         }
 
-        // 1.21.10+ allows sprinting in shallow water
-        boolean canWaterSprint = targetVersion.olderThanOrEqualTo(ProtocolVersion.v1_12_2)
-                || targetVersion.newerThan(ProtocolVersion.v1_21_9)
+        // isSprintingPossible(allowedInShallowWater=false): the run-sprint paths
+        // (canStartSprinting / shouldStopRunSprinting) pass abilities.flying, so a waist-deep
+        // player cannot run-sprint on 1.21.10+. The swim path passes true and is handled by the
+        // isSwimming() branches below, which never consult this flag.
+        boolean canWaterSprint = PacketFixFor1_21_5Plus.isShallowWaterSprintAllowed(false)
                 || !this.isInWater() || this.canSwim();
 
         if (!this.isSprinting() && canWaterSprint && this.isUsingSwimmingAnimation() && flag4
@@ -933,10 +935,10 @@ public class ClientPlayerEntity extends AbstractClientPlayerEntity {
                     this.setSprinting(false);
                 }
             } else if (PacketFixFor1_21_5Plus.isInModernSprintStopBand()) {
-                // Modern LocalPlayer.shouldStopRunSprinting (1.21.9+ / >1.21.7):
+                // Modern LocalPlayer.shouldStopRunSprinting (>1.21.7):
                 // !isSprintingPossible(flying) || !forward || (HC && !minor)
-                // isSprintingPossible(~flying): !passenger (no vehicle sprint here) && food
-                //   && (flying || canWaterSprint-equivalent for shallow water on 1.21.10+)
+                // isSprintingPossible(false): !passenger (no vehicle sprint here) && food
+                //   && !isInShallowWater() on 1.21.10+ (canWaterSprint)
                 boolean sprintingPossible = flag4 && !this.isPassenger() && canWaterSprint;
                 if (this.isSwimming()) {
                     // shouldStopSwimSprinting: !isSprintingPossible(true) || !inWater || (!forward && !onGround && !shift) 
