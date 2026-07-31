@@ -128,7 +128,10 @@ public final class ServerboundInteractionAdapter {
     private static void sendUseItem(UserConnection connection, CPlayerTryUseItemPacket packet) throws Exception {
         PacketWrapper wrapper = PacketWrapper.create(ServerboundPackets1_19.USE_ITEM, connection);
         wrapper.write(Types.VAR_INT, packet.getHand().ordinal());
-        wrapper.write(Types.VAR_INT, InteractionSequence.next());
+        // Placeholder: ServerboundInteractionSequenceProtocol assigns the real
+        // per-connection sequence right after the 1.19 rung. Writing it here
+        // would double-increment because that protocol also runs on this path.
+        wrapper.write(Types.VAR_INT, 0);
         wrapper.sendToServer(Protocol1_19To1_18_2.class);
     }
 
@@ -143,7 +146,8 @@ public final class ServerboundInteractionAdapter {
         wrapper.write(Types.FLOAT, (float) (hit.getHitVec().y - hit.getPos().getY()));
         wrapper.write(Types.FLOAT, (float) (hit.getHitVec().z - hit.getPos().getZ()));
         wrapper.write(Types.BOOLEAN, hit.isInside());
-        wrapper.write(Types.VAR_INT, InteractionSequence.next());
+        // Placeholder, see sendUseItem.
+        wrapper.write(Types.VAR_INT, 0);
         wrapper.sendToServer(Protocol1_19To1_18_2.class);
     }
 
@@ -152,8 +156,11 @@ public final class ServerboundInteractionAdapter {
         wrapper.write(Types.VAR_INT, packet.getAction().ordinal());
         wrapper.write(Types.BLOCK_POSITION1_14,
                 new BlockPosition(packet.getPosition().getX(), packet.getPosition().getY(), packet.getPosition().getZ()));
-        wrapper.write(Types.BYTE, (byte) packet.getFacing().getIndex());
-        wrapper.write(Types.VAR_INT, InteractionSequence.next());
+        wrapper.write(Types.UNSIGNED_BYTE, (short) packet.getFacing().getIndex());
+        // Placeholder, see sendUseItem. ServerboundInteractionSequenceProtocol
+        // also applies the BadPacketsL rules (pos=0,0,0 / face=DOWN / sequence=0
+        // for non-digging actions) on the exact same packet.
+        wrapper.write(Types.VAR_INT, 0);
         wrapper.sendToServer(Protocol1_19To1_18_2.class);
     }
 }

@@ -1,5 +1,6 @@
 package de.florianmichael.viamcp.fixes;
 
+import com.mentalfrostbyte.jello.util.game.network.ViaNetworkDiagnostics;
 import com.viaversion.viaversion.api.connection.UserConnection;
 import com.viaversion.viaversion.api.connection.StorableObject;
 import com.viaversion.viaversion.api.protocol.Protocol;
@@ -220,10 +221,6 @@ public final class PacketFixFor1_21Plus {
      * pair inside a single tick whenever that same tick's livingTick re-acquired sprint.
      */
 
-    public static boolean shouldSendPlayerInput() {
-        return shouldSendPlayerInput(activeUserConnection());
-    }
-
     private static boolean shouldSendPlayerInput(UserConnection connection) {
         ProtocolVersion targetVersion = targetVersion();
         // PLAYER_INPUT exists since 1.21.2. Grim supportsEndTick() uses knownInput from it.
@@ -233,6 +230,10 @@ public final class PacketFixFor1_21Plus {
                 && isAtLeast1_21_3Protocol(targetVersion)
                 && isPlayState(connection)
                 && hasProtocol(connection, playerInputProtocol(targetVersion));
+    }
+
+    public static boolean shouldSendPlayerInput() {
+        return shouldSendPlayerInput(activeUserConnection());
     }
 
     public static int getPositionPacketInterval(boolean legacy) {
@@ -277,6 +278,12 @@ public final class PacketFixFor1_21Plus {
             return false;
         }
 
+        if (ViaNetworkDiagnostics.isBacklogged()) {
+            // Skip while the event loop is draining an initial-join backlog;
+            // a fresh PLAYER_INPUT will be sent once the queue recovers.
+            return true;
+        }
+
         try {
             byte flags = playerInputFlagsFromMovementInput(player);
             // Modern LocalPlayer.tick: only send when keyPresses changed vs lastSentInput.
@@ -310,6 +317,7 @@ public final class PacketFixFor1_21Plus {
 
             lastSentPlayerInputFlags = flags;
             hasSentPlayerInputFlags = true;
+            ViaNetworkDiagnostics.resentC2S();
             return true;
         } catch (Exception e) {
             LOGGER.warn("Failed to send 1.21+ player input packet", e);
@@ -621,11 +629,48 @@ public final class PacketFixFor1_21Plus {
         @Override
         public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
             if (msg instanceof ByteBuf) {
-                rewriteServerboundMovementFlags((ByteBuf) msg, this.connection);
+                ByteBuf buf = (ByteBuf) msg;
+                if (dropBackloggedMovement(buf, this.connection)) {
+                    promise.setSuccess();
+                    return;
+                }
+                rewriteServerboundMovementFlags(buf, this.connection);
             }
 
             super.write(ctx, msg, promise);
         }
+    }
+
+    /**
+     * Drops stale movement packets that were queued during an initial-join /
+     * chunk burst instead of flushing them all at once after recovery.
+     * Anti-cheat-facing consequence: the burst that triggers Grim Timer /
+     * TimerLimit is removed; the connection keeps flowing because keep-alive
+     * and interaction packets are not movement packets.
+     */
+    private static boolean dropBackloggedMovement(ByteBuf buf, UserConnection connection) {
+        if (!ViaNetworkDiagnostics.shouldDropStaleMovement() || !shouldUseMovementFlags(connection)
+                || !buf.isReadable()) {
+            return false;
+        }
+
+        int start = buf.readerIndex();
+        VarInt packetId = readVarInt(buf, start);
+        if (packetId.bytes <= 0) {
+            return false;
+        }
+
+        MovementPacketIds ids = movementPacketIds();
+        boolean isMovement = packetId.value == ids.position
+                || packetId.value == ids.positionRotation
+                || packetId.value == ids.rotation
+                || packetId.value == ids.statusOnly;
+        if (!isMovement) {
+            return false;
+        }
+
+        ViaNetworkDiagnostics.droppedBacklogMovement();
+        return true;
     }
 
     private static MovementFlagState movementFlagState(UserConnection connection) {

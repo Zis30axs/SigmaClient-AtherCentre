@@ -391,6 +391,7 @@ public class ClientPlayNetHandler implements IClientPlayNetHandler {
         PacketThreadUtil.checkThreadAndEnqueue(packetIn, this, this.client);
         PacketFixFor1_21Plus.resetPlayerInputState();
         ExtendedChunkDataStore.clearAll();
+        com.mentalfrostbyte.jello.util.game.world.ExtendedBlockStateMapper.warmupAsync();
         this.client.playerController = new PlayerController(this.client, this);
 
         if (this.client.getCurrentServerData() != null) {

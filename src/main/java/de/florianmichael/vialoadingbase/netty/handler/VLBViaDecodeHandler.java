@@ -18,6 +18,8 @@
 
 package de.florianmichael.vialoadingbase.netty.handler;
 
+import com.mentalfrostbyte.jello.util.game.network.ViaNetworkDiagnostics;
+import de.florianmichael.viamcp.fixes.compat.ServerboundInteractionSequenceProtocol;
 import com.viaversion.viaversion.api.Via;
 import com.viaversion.viaversion.api.connection.UserConnection;
 import com.viaversion.viaversion.api.protocol.packet.State;
@@ -42,6 +44,10 @@ public class VLBViaDecodeHandler extends MessageToMessageDecoder<ByteBuf> {
 
     @Override
     protected void decode(ChannelHandlerContext ctx, ByteBuf bytebuf, List<Object> out) throws Exception {
+        long viaDiagStart = ViaNetworkDiagnostics.startTiming();
+        // One-time install after Via has built the protocol pipeline during
+        // LOGIN; cheap contains() check afterwards. Runs on the event loop.
+        ServerboundInteractionSequenceProtocol.ensureInstalled(user);
         if (!user.checkIncomingPacket()) throw CancelDecoderException.generate(null);
         if (!user.shouldTransformPacket()) {
             out.add(bytebuf.retain());
@@ -53,6 +59,7 @@ public class VLBViaDecodeHandler extends MessageToMessageDecoder<ByteBuf> {
             user.transformIncoming(transformedBuf, CancelDecoderException::generate);
 
             out.add(transformedBuf.retain());
+            ViaNetworkDiagnostics.transformedS2C(viaDiagStart);
         } finally {
             transformedBuf.release();
         }

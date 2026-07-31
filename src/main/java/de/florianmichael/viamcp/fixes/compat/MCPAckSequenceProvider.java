@@ -6,6 +6,7 @@ import com.viaversion.viaversion.protocols.v1_18_2to1_19.provider.AckSequencePro
 public final class MCPAckSequenceProvider extends AckSequenceProvider {
     @Override
     public void handleSequence(UserConnection connection, int sequence) {
-        InteractionSequence.set(Math.max(InteractionSequence.get(), sequence));
+        InteractionSequenceStorage storage = InteractionSequenceStorage.of(connection);
+        storage.set(Math.max(storage.current(), sequence));
     }
 }

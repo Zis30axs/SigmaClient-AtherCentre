@@ -93,8 +93,8 @@ public class MCPVLBPipeline extends VLBPipeline {
             return;
         }
 
-        String anchor = ctx.pipeline().get(getCompressionHandlerName()) != null
-                ? getCompressionHandlerName()
+        String anchor = ctx.pipeline().get(VIA_ENCODER_HANDLER_NAME) != null
+                ? VIA_ENCODER_HANDLER_NAME
                 : "prepender";
         if (ctx.pipeline().get(anchor) != null) {
             ctx.pipeline().addAfter(anchor, ServerboundPacketDebugHandler.HANDLER_NAME,
@@ -108,12 +108,20 @@ public class MCPVLBPipeline extends VLBPipeline {
             return;
         }
 
-        String anchor = ctx.pipeline().get(getCompressionHandlerName()) != null
-                ? getCompressionHandlerName()
+        /*
+         * The flag rewriter parses the post-Via packet layout (packet id first).
+         * It must therefore sit between via-encoder and compress; after compress
+         * the buffer starts with a length varint (0 for under-threshold packets)
+         * and every movement packet is silently skipped, leaving the horizontal
+         * collision queue to grow forever.
+         */
+        String anchor = ctx.pipeline().get(VIA_ENCODER_HANDLER_NAME) != null
+                ? VIA_ENCODER_HANDLER_NAME
                 : "prepender";
         if (ctx.pipeline().get(anchor) != null) {
             ctx.pipeline().addAfter(anchor, PacketFixFor1_21Plus.HANDLER_NAME,
                     PacketFixFor1_21Plus.createServerboundMovementFlagHandler(getUser()));
+            logPipeline(ctx, "movement flag handler installed after " + anchor);
         }
     }
 

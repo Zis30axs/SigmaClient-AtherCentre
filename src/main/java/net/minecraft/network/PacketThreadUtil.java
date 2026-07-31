@@ -1,5 +1,6 @@
 package net.minecraft.network;
 
+import com.mentalfrostbyte.jello.util.game.network.ViaNetworkDiagnostics;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.play.server.SJoinGamePacket;
 import net.minecraft.network.play.server.SPlayerPositionLookPacket;
@@ -25,13 +26,16 @@ public class PacketThreadUtil
     {
         if (!executor.isOnExecutionThread())
         {
+            ViaNetworkDiagnostics.scheduledS2C(packetIn);
             executor.execute(() ->
             {
                 clientPreProcessPacket(packetIn);
 
                 if (processor.getNetworkManager().isChannelOpen())
                 {
+                    long viaDiagStart = ViaNetworkDiagnostics.startTiming();
                     packetIn.processPacket(processor);
+                    ViaNetworkDiagnostics.processedS2C(packetIn, viaDiagStart);
                 }
                 else {
                     LOGGER.debug("Ignoring packet due to disconnection: " + packetIn);

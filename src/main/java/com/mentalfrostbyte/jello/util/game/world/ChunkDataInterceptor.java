@@ -27,6 +27,7 @@ public class ChunkDataInterceptor extends ChannelInboundHandlerAdapter {
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
         if (msg instanceof ByteBuf && WorldHeightHelper.canUseRawExtendedChunks()) {
+            ExtendedBlockStateMapper.warmupAsync();
             ByteBuf buf = (ByteBuf) msg;
             int savedReaderIndex = buf.readerIndex();
             int packetId = -1;
@@ -98,6 +99,17 @@ public class ChunkDataInterceptor extends ChannelInboundHandlerAdapter {
 
         for (int i = 0; i < sections.length && i < WorldHeightHelper.getSectionCount(); ++i) {
             int sectionY = WorldHeightHelper.getRawChunkMinSection() + i;
+            /*
+             * ViaBackwards' 1.16 translation already delivers sections Y 0..15
+             * (the legacy build range). Only the sections that the downgrade
+             * drops - Y -4..-1 and Y 16..19 - must be captured here. Converting
+             * all 24 sections tripled the per-chunk work and stored three times
+             * as much block data as the client actually needs.
+             */
+            if (WorldHeightHelper.isTranslatedSectionInBounds(sectionY)) {
+                continue;
+            }
+
             data.setSection(WorldHeightHelper.sectionToIndex(sectionY), convertSection(sections[i], sectionY));
         }
 

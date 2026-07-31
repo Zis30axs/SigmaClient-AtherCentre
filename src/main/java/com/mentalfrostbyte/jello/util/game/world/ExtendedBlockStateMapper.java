@@ -5,6 +5,8 @@ import com.viaversion.viaversion.api.protocol.version.ProtocolVersion;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
@@ -17,6 +19,15 @@ public class ExtendedBlockStateMapper {
     private static final int STONE_ID = Block.getStateId(Blocks.STONE.getDefaultState());
     private static volatile MappingChain mappingChain;
     private static volatile ProtocolVersion mappingVersion;
+    /**
+     * rawStateId -> native 1.16 block-state id. -1 means "not computed yet".
+     * Grown lazily (never shrinks) and swapped atomically.
+     */
+    private static volatile int[] nativeIdCache = new int[0];
+    private static final AtomicBoolean WARMUP_STARTED = new AtomicBoolean();
+
+    private static final int UNCOMPUTED = -1;
+    private static final int WARMUP_BOUND = 1 << 16;
 
     private ExtendedBlockStateMapper() {
     }
@@ -32,13 +43,86 @@ public class ExtendedBlockStateMapper {
             return AIR_ID;
         }
 
+        int[] cache = nativeIdCache;
+        if (rawStateId >= 0 && rawStateId < cache.length) {
+            int cached = cache[rawStateId];
+            if (cached != UNCOMPUTED) {
+                return cached;
+            }
+        }
+
+        return slowMapToNativeId(rawStateId);
+    }
+
+    private static int slowMapToNativeId(int rawStateId) {
         MappingChain chain = getMappingChain();
         int mappedId = chain.map(rawStateId);
         if (mappedId < 0) {
-            return rawStateId == AIR_ID ? AIR_ID : STONE_ID;
+            return STONE_ID;
         }
 
-        return Block.BLOCK_STATE_IDS.getByValue(mappedId) != null ? mappedId : STONE_ID;
+        int nativeId = Block.BLOCK_STATE_IDS.getByValue(mappedId) != null ? mappedId : STONE_ID;
+        cacheNativeId(rawStateId, nativeId);
+        return nativeId;
+    }
+
+    /**
+     * Populates the fast mapping cache on a background thread so the first
+     * chunk data packet does not pay the per-block reflection cost on the
+     * Netty event loop. Idempotent.
+     */
+    public static void warmupAsync() {
+        if (WARMUP_STARTED.getAndSet(true)) {
+            return;
+        }
+
+        CompletableFuture.runAsync(() -> {
+            try {
+                ensureCacheCapacity(WARMUP_BOUND);
+                int[] cache = nativeIdCache;
+                for (int rawStateId = 0; rawStateId < cache.length; ++rawStateId) {
+                    if (cache[rawStateId] == UNCOMPUTED) {
+                        cache[rawStateId] = slowMapToNativeId(rawStateId);
+                    }
+                }
+                LOGGER.info("[ExtendedHeight] Warmed up {} block-state mappings for {}",
+                        cache.length, WorldHeightHelper.getTargetVersionSafe().getName());
+            } catch (Throwable t) {
+                LOGGER.warn("[ExtendedHeight] Block-state warmup failed, falling back to lazy fill", t);
+            }
+        });
+    }
+
+    private static void cacheNativeId(int rawStateId, int nativeId) {
+        if (rawStateId < 0) {
+            return;
+        }
+
+        int[] cache = nativeIdCache;
+        if (rawStateId < cache.length) {
+            cache[rawStateId] = nativeId;
+            return;
+        }
+
+        synchronized (ExtendedBlockStateMapper.class) {
+            cache = nativeIdCache;
+            if (rawStateId >= cache.length) {
+                ensureCacheCapacity(Math.max(rawStateId + 1, cache.length * 2));
+            }
+            nativeIdCache[rawStateId] = nativeId;
+        }
+    }
+
+    private static void ensureCacheCapacity(int capacity) {
+        int[] current = nativeIdCache;
+        if (capacity <= current.length) {
+            return;
+        }
+
+        int[] grown = new int[capacity];
+        java.util.Arrays.fill(grown, UNCOMPUTED);
+        System.arraycopy(current, 0, grown, 0, current.length);
+        nativeIdCache = grown;
     }
 
     private static MappingChain getMappingChain() {

@@ -148,7 +148,7 @@ public class ExtendedChunkData {
 
     public void mergeFrom(ExtendedChunkData other) {
         for (int i = 0; i < this.sections.length && i < other.sections.length; ++i) {
-            if (other.hasSections()) {
+            if (other.hasSections() && other.sections[i] != null) {
                 this.sections[i] = other.sections[i];
             }
         }
@@ -172,6 +172,12 @@ public class ExtendedChunkData {
         int changed = 0;
 
         for (int i = 0; i < target.length && i < this.sections.length; ++i) {
+            if (this.sections[i] == null) {
+                // Keep the section that the translated 1.16 chunk packet
+                // already produced (Y 0..15); only extended-range sections
+                // are captured by the interceptor.
+                continue;
+            }
             target[i] = this.sections[i];
             ++changed;
         }

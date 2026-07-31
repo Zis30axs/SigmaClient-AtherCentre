@@ -18,6 +18,7 @@
 
 package de.florianmichael.vialoadingbase.netty.handler;
 
+import com.mentalfrostbyte.jello.util.game.network.ViaNetworkDiagnostics;
 import com.viaversion.viaversion.api.connection.UserConnection;
 import com.viaversion.viaversion.exception.CancelCodecException;
 import com.viaversion.viaversion.exception.CancelEncoderException;
@@ -39,6 +40,7 @@ public class VLBViaEncodeHandler extends MessageToMessageEncoder<ByteBuf> {
 
     @Override
     protected void encode(final ChannelHandlerContext ctx, ByteBuf bytebuf, List<Object> out) throws Exception {
+        long viaDiagStart = ViaNetworkDiagnostics.startTiming();
         if (!user.checkOutgoingPacket()) throw CancelEncoderException.generate(null);
         if (!user.shouldTransformPacket()) {
             out.add(bytebuf.retain());
@@ -50,6 +52,7 @@ public class VLBViaEncodeHandler extends MessageToMessageEncoder<ByteBuf> {
             user.transformOutgoing(transformedBuf, CancelEncoderException::generate);
 
             out.add(transformedBuf.retain());
+            ViaNetworkDiagnostics.transformedC2S(viaDiagStart);
         } finally {
             transformedBuf.release();
         }

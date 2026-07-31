@@ -6,6 +6,7 @@ import com.mentalfrostbyte.jello.event.impl.game.network.EventGlobalReceivePacke
 import com.mentalfrostbyte.jello.event.impl.game.network.EventReceivePacket;
 import com.mentalfrostbyte.jello.event.impl.game.network.EventSendPacket;
 import com.mentalfrostbyte.jello.util.game.network.ServerConnectionErrorLogger;
+import com.mentalfrostbyte.jello.util.game.network.ViaNetworkDiagnostics;
 import com.viaversion.viaversion.api.Via;
 import com.viaversion.viaversion.api.connection.UserConnection;
 import com.viaversion.viaversion.connection.UserConnectionImpl;
@@ -14,7 +15,7 @@ import de.florianmichael.vialoadingbase.ViaLoadingBase;
 import de.florianmichael.vialoadingbase.netty.event.CompressionReorderEvent;
 import de.florianmichael.viamcp.MCPVLBPipeline;
 import de.florianmichael.viamcp.ViaMCP;
-import de.florianmichael.viamcp.fixes.compat.InteractionStateTracker;
+import de.florianmichael.viamcp.fixes.compat.InteractionSequenceStorage;
 import de.florianmichael.viamcp.fixes.compat.ServerboundInteractionAdapter;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.Channel;
@@ -144,6 +145,7 @@ public class NetworkManager extends SimpleChannelInboundHandler<IPacket<?>> {
     }
 
     public void channelInactive(ChannelHandlerContext p_channelInactive_1_) throws Exception {
+        ViaNetworkDiagnostics.detach(this);
         this.closeChannel(new TranslationTextComponent("disconnect.endOfStream"));
     }
 
@@ -182,6 +184,7 @@ public class NetworkManager extends SimpleChannelInboundHandler<IPacket<?>> {
 
     protected void channelRead0(ChannelHandlerContext context, IPacket<?> packet) {
         if (this.channel.isOpen()) {
+            long viaDiagStart = ViaNetworkDiagnostics.startTiming();
             try {
                 IPacket<?> packetToProcess = packet;
 
@@ -211,6 +214,7 @@ public class NetworkManager extends SimpleChannelInboundHandler<IPacket<?>> {
             } catch (ThreadQuickExitException ignored) {
             }
 
+            ViaNetworkDiagnostics.rawS2C(packet, viaDiagStart);
             ++this.field_211394_q;
         }
     }
@@ -234,11 +238,20 @@ public class NetworkManager extends SimpleChannelInboundHandler<IPacket<?>> {
     }
 
     public static void setCount1_19(int count) {
-        InteractionStateTracker.setSequence(count);
+        // Per-connection reset: a fresh UserConnection starts at 0 anyway, but
+        // after a world switch (JoinGame / dimension-change Respawn) the client
+        // must restart at 1, matching Grim's BadPacketsH.onWorldChange reset.
+        for (UserConnection connection : Via.getManager().getConnectionManager().getConnections()) {
+            InteractionSequenceStorage storage = connection.get(InteractionSequenceStorage.class);
+            if (storage != null) {
+                storage.set(count);
+            }
+        }
     }
 
     public void sendPacket(IPacket<?> packetIn, @Nullable GenericFutureListener<? extends Future<? super Void>> p_201058_2_) {
         IPacket<?> packet = packetIn;
+        ViaNetworkDiagnostics.rawC2S();
 
         // See channelRead0: never expose the integrated server's outbound packets to module
         // events, otherwise modules like Blink/FakeLag capture clientbound packets and later
@@ -248,9 +261,14 @@ public class NetworkManager extends SimpleChannelInboundHandler<IPacket<?>> {
             EventBus.call(event);
 
             if (event.cancelled) {
+                ViaNetworkDiagnostics.cancelledC2S();
                 return;
             }
             packet = event.packet;
+        }
+
+        if (ViaNetworkDiagnostics.shouldDropPlayPacketDuringConfiguration(this, packet)) {
+            return;
         }
 
         if (ServerboundInteractionAdapter.trySend(this, packet)) {
@@ -270,6 +288,12 @@ public class NetworkManager extends SimpleChannelInboundHandler<IPacket<?>> {
     }
 
     public void sendNoEventPacket(IPacket<?> packetIn, @Nullable GenericFutureListener<? extends Future<? super Void>> p_201058_2_) {
+        ViaNetworkDiagnostics.rawC2S();
+
+        if (ViaNetworkDiagnostics.shouldDropPlayPacketDuringConfiguration(this, packetIn)) {
+            return;
+        }
+
         if (ServerboundInteractionAdapter.trySend(this, packetIn)) {
             return;
         }
@@ -308,6 +332,7 @@ public class NetworkManager extends SimpleChannelInboundHandler<IPacket<?>> {
         ProtocolType protocoltype = ProtocolType.getFromPacket(inPacket);
         ProtocolType protocoltype1 = this.channel.attr(PROTOCOL_ATTRIBUTE_KEY).get();
         ++this.field_211395_r;
+        ViaNetworkDiagnostics.writtenC2S();
 
         if (protocoltype1 != protocoltype) {
             LOGGER.debug("Disabled auto read");
@@ -362,6 +387,7 @@ public class NetworkManager extends SimpleChannelInboundHandler<IPacket<?>> {
      * Checks timeouts and processes all packets received
      */
     public void tick() {
+        ViaNetworkDiagnostics.onConnectionTick(this);
         this.flushOutboundQueue();
 
         if (this.packetListener instanceof ServerLoginNetHandler) {

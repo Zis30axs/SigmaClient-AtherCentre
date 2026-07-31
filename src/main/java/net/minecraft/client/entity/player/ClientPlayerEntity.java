@@ -305,7 +305,16 @@ public class ClientPlayerEntity extends AbstractClientPlayerEntity {
 
         this.sendSneakingPacket();
 
-        if (this.isCurrentViewEntity()) {
+        boolean viaMovementSuppressed = com.mentalfrostbyte.jello.util.game.network.ViaNetworkDiagnostics
+                .shouldSuppressMovementPackets();
+
+        if (viaMovementSuppressed) {
+            // The Netty event loop is still draining an initial-join backlog.
+            // Do not queue another movement packet that would only flush later
+            // as a burst (Grim Timer / TimerLimit); the next non-backlogged
+            // tick sends a fresh position instead.
+            this.positionUpdateTicks = 0;
+        } else if (this.isCurrentViewEntity()) {
             double deltaX = x - this.lastReportedPosX;
             double deltaY = y - this.lastReportedPosY;
             double deltaZ = z - this.lastReportedPosZ;
