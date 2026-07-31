@@ -39,8 +39,6 @@ import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.entity.projectile.ProjectileHelper;
 import net.minecraft.item.SwordItem;
-import net.minecraft.network.play.client.CEntityActionPacket;
-import net.minecraft.network.play.client.CHeldItemChangePacket;
 import net.minecraft.network.play.server.SEntityStatusPacket;
 import net.minecraft.network.play.server.SAnimateHandPacket;
 import net.minecraft.util.Hand;
@@ -56,8 +54,6 @@ import team.sdhq.eventBus.annotations.priority.LowestPriority;
 import java.util.*;
 import java.util.Map.Entry;
 
-import static com.mentalfrostbyte.jello.util.game.MinecraftUtil.mc;
-
 @SuppressWarnings({ "unused", "cast" })
 public class KillAura extends Module {
     public static boolean isActive = false;
@@ -69,7 +65,7 @@ public class KillAura extends Module {
     private final NumberSetting<Float> rotationSpeed;
     private final BooleanSetting useRotationSpeed;
     private final BooleanSetting hitEvent;
-    private final BooleanSetting testks;
+    private final BooleanSetting grimkeepsprinttest;
     public HashMap<Entity, Animation> entityAnimation = new HashMap<>();
     public static InteractAutoBlock autoBlock;
     private PredictionAutoBlock predictionAutoBlock;
@@ -137,7 +133,7 @@ public class KillAura extends Module {
         this.registerSetting(
                 this.hitEvent = new BooleanSetting("HitEvent", "Change the hit event (vanilla autoblock?legit)", true));
         this.registerSetting(new BooleanSetting("Perfect Hit", "Hit entities at the perfect moment", false));
-        this.registerSetting(this.testks = new BooleanSetting("1.9+GrimKS","Grim Cooldown KS",false));
+        this.registerSetting(this.grimkeepsprinttest = new BooleanSetting("1.9+GrimKeepSprint","Grim Cooldown KS",false));
         this.registerSetting(new BooleanSetting("Players", "Hit players", true));
         this.registerSetting(new BooleanSetting("Animals", "Hit animals", false));
         this.registerSetting(new BooleanSetting("Monsters", "Hit monsters", false));
@@ -888,7 +884,7 @@ public class KillAura extends Module {
                             autoBlock.stopAutoBlock();
                         }
                         
-                        if (testks.getCurrentValue()) {
+                        if (grimkeepsprinttest.getCurrentValue()) {
                             mc.player.swingArm(Hand.MAIN_HAND);
                         }
 

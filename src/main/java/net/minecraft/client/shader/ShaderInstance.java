@@ -306,6 +306,12 @@ public class ShaderInstance implements IShaderManager, AutoCloseable
                 GlStateManager.bindTexture(0);
             }
         }
+
+        // Leave the active texture unit back on 0. Callers that bind a texture without selecting a
+        // unit first (FontTexture.createTexturedGlyph, for one) assume it is still there, and would
+        // otherwise upload into whatever unit the loop above stopped on. Single-sampler programs
+        // happen to end on unit 0 already, so this only ever showed up with multi-sampler ones.
+        GlStateManager.activeTexture(33984);
     }
 
     public void func_216535_f()

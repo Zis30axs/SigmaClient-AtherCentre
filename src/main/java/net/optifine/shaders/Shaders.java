@@ -5709,17 +5709,12 @@ public class Shaders
     }
 
     /** SMAA quality levels, loading assets/minecraft/shaders/post/smaa_of_&lt;n&gt;x.json.
-     *  These use values the FXAA strengths never take (FXAA only has 2/4/8/16), so a single
-     *  int keeps encoding the whole antialiasing choice.
      *  1x is the reference SMAA_PRESET_HIGH, 2x is SMAA_PRESET_ULTRA. */
     public static final int AA_SMAA_1X = 1;
-    public static final int AA_SMAA_2X = 3;
+    public static final int AA_SMAA_2X = 2;
 
-    /** Selectable antialiasing modes, in cycle order.
-     *  Positive values other than the AA_SMAA_* ones are FXAA strengths and load
-     *  assets/minecraft/shaders/post/fxaa_of_&lt;n&gt;x.json.
-     *  -16 is FXAA 16x plus contrast-adaptive sharpening (fxaa_cas_of_16x.json). */
-    public static final int[] AA_LEVELS = new int[] {0, AA_SMAA_1X, AA_SMAA_2X, 2, 4, 8, 16, -16};
+    /** Selectable antialiasing modes, in cycle order. */
+    public static final int[] AA_LEVELS = new int[] {0, AA_SMAA_1X, AA_SMAA_2X};
 
     /** Whether the given antialiasing level selects one of the SMAA pipelines. */
     public static boolean isSmaaLevel(int level)
