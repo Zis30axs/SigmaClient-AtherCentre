@@ -134,15 +134,16 @@ public class GameRenderer implements IResourceManagerReloadListener, AutoCloseab
     private int serverWaitTimeCurrent = 0;
     private float avgServerTimeDiff = 0.0F;
     private float avgServerTickDiff = 0.0F;
-    private final Map<Integer, ShaderGroup> fxaaShaders = new HashMap<>();
     private boolean guiLoadingVisible = false;
-    // ── FXAA anti-aliasing driven by GameSettings.ofAaLevel ──
-    // Hardware MSAA is not usable here (the world renders into an FBO whose depth is
-    // sampled as a texture by ESP/shaders), so the AA quality slider instead drives this
-    // post-process FXAA pass. fxaaShaderGroup tracks the group we own so we never fight
-    // the entity/manual shader system for the shared shaderGroup field.
-    private static final ResourceLocation FXAA_SHADER = new ResourceLocation("shaders/post/fxaa.json");
-    private ShaderGroup fxaaShaderGroup = null;
+    // ── SMAA antialiasing, driven by the shader settings screen ──
+    // Hardware MSAA is not usable here (the world renders into a non-multisample FBO whose depth
+    // ESP and shader packs sample as a texture), so antialiasing is a post-process pass instead.
+    // This deliberately does NOT reuse the shared shaderGroup field: that one belongs to the
+    // entity-outline and spectator (creeper/spider) shaders, and fighting over it corrupted GL
+    // state. It also renders at the same point a shader pack's final composite does, at the end
+    // of renderWorld, rather than in the vanilla post-process slot.
+    private ShaderGroup smaaShaderGroup = null;
+    private int smaaLevel = 0;
 
     public GameRenderer(Minecraft mcIn, IResourceManager resourceManagerIn, RenderTypeBuffers renderTypeBuffersIn) {
         this.mc = mcIn;
@@ -160,9 +161,10 @@ public class GameRenderer implements IResourceManagerReloadListener, AutoCloseab
         this.overlayTexture.close();
         this.stopUseShader();
 
-        if (this.fxaaShaderGroup != null) {
-            this.fxaaShaderGroup.close();
-            this.fxaaShaderGroup = null;
+        if (this.smaaShaderGroup != null) {
+            this.smaaShaderGroup.close();
+            this.smaaShaderGroup = null;
+            this.smaaLevel = 0;
         }
     }
 
@@ -229,10 +231,11 @@ public class GameRenderer implements IResourceManagerReloadListener, AutoCloseab
 
         this.shaderGroup = null;
 
-        // Drop the FXAA group too; updateFxaaState() rebuilds it against the fresh framebuffer.
-        if (this.fxaaShaderGroup != null) {
-            this.fxaaShaderGroup.close();
-            this.fxaaShaderGroup = null;
+        // Drop the SMAA group too; updateSmaaState() rebuilds it against the fresh framebuffer.
+        if (this.smaaShaderGroup != null) {
+            this.smaaShaderGroup.close();
+            this.smaaShaderGroup = null;
+            this.smaaLevel = 0;
         }
 
         if (this.shaderIndex == SHADER_COUNT) {
@@ -288,48 +291,64 @@ public class GameRenderer implements IResourceManagerReloadListener, AutoCloseab
             this.shaderGroup.createBindFramebuffers(width, height);
         }
 
-        if (this.fxaaShaderGroup != null) {
-            this.fxaaShaderGroup.createBindFramebuffers(width, height);
+        if (this.smaaShaderGroup != null) {
+            this.smaaShaderGroup.createBindFramebuffers(width, height);
         }
 
         this.mc.worldRenderer.createBindEntityOutlineFbs(width, height);
     }
 
     /**
-     * Keeps the FXAA post-process pass in sync with the anti-aliasing quality slider
-     * (GameSettings.ofAaLevel). Loads the shader when AA is enabled and the world is present,
-     * and releases it otherwise. FXAA is disabled while OptiFine shaders are active, since the
-     * shader pack does its own final composite.
+     * Keeps the SMAA pass in sync with the antialiasing option on the shader settings screen.
+     * Rebuilds the group when the level changes and releases it when antialiasing is off, there
+     * is no world, or a shader pack is loaded (packs do their own antialiasing, and stacking a
+     * second pass on top of theirs only blurs the result).
      */
-    private void updateFxaaState() {
-        boolean wanted = GLX.isUsingFBOs()
-                && this.mc.gameSettings.ofAaLevel > 0
-                && this.mc.world != null
-                && !Config.isShaders();
+    private void updateSmaaState() {
+        int level = Shaders.configAntialiasingLevel;
+        boolean wanted = GLX.isUsingFBOs() && Shaders.isSmaaLevel(level) && this.mc.world != null && !Config.isShaders();
 
-        if (wanted) {
-            if (this.fxaaShaderGroup == null) {
-                try {
-                    this.fxaaShaderGroup = new ShaderGroup(this.mc.getTextureManager(), this.resourceManager, this.mc.getFramebuffer(), FXAA_SHADER);
-                    this.fxaaShaderGroup.createBindFramebuffers(this.mc.getMainWindow().getFramebufferWidth(), this.mc.getMainWindow().getFramebufferHeight());
-                } catch (IOException | JsonSyntaxException exception) {
-                    LOGGER.warn("Failed to load FXAA shader: {}", FXAA_SHADER, exception);
-                    this.fxaaShaderGroup = null;
-                }
+        if (!wanted) {
+            if (this.smaaShaderGroup != null) {
+                this.smaaShaderGroup.close();
+                this.smaaShaderGroup = null;
+                this.smaaLevel = 0;
             }
-        } else if (this.fxaaShaderGroup != null) {
-            this.fxaaShaderGroup.close();
-            this.fxaaShaderGroup = null;
+
+            return;
+        }
+
+        if (this.smaaShaderGroup != null && this.smaaLevel == level) {
+            return;
+        }
+
+        // Level changed: drop the old group before building the new one, or its framebuffers leak.
+        if (this.smaaShaderGroup != null) {
+            this.smaaShaderGroup.close();
+            this.smaaShaderGroup = null;
+            this.smaaLevel = 0;
+        }
+
+        ResourceLocation resourcelocation = new ResourceLocation("shaders/post/smaa_of_" + Shaders.getSmaaLevel(level) + "x.json");
+
+        try {
+            this.smaaShaderGroup = new ShaderGroup(this.mc.getTextureManager(), this.resourceManager, this.mc.getFramebuffer(), resourcelocation);
+            this.smaaShaderGroup.createBindFramebuffers(this.mc.getMainWindow().getFramebufferWidth(), this.mc.getMainWindow().getFramebufferHeight());
+            this.smaaLevel = level;
+        } catch (IOException | JsonSyntaxException exception) {
+            LOGGER.warn("Failed to load SMAA shader: {}", resourcelocation, exception);
+            this.smaaShaderGroup = null;
+            this.smaaLevel = 0;
         }
     }
 
     /**
-     * Runs the FXAA pass in place on the main framebuffer. Called after the world (and any active
-     * entity/manual post shader) has been composited, so distant world geometry gets smoothed
-     * without touching the depth buffer that ESP and shaders sample.
+     * Runs the SMAA pass in place on the main framebuffer. Called at the end of renderWorld, after
+     * the hand and any ESP dispatch, which is where a shader pack's final composite runs too. The
+     * pass only reads colour and depth, so the depth buffer ESP samples is left intact.
      */
-    private void renderFxaa(float partialTicks) {
-        if (this.fxaaShaderGroup == null) {
+    private void renderSmaa(float partialTicks) {
+        if (this.smaaShaderGroup == null) {
             return;
         }
 
@@ -340,8 +359,9 @@ public class GameRenderer implements IResourceManagerReloadListener, AutoCloseab
         RenderSystem.matrixMode(5890);
         RenderSystem.pushMatrix();
         RenderSystem.loadIdentity();
-        this.fxaaShaderGroup.render(partialTicks);
+        this.smaaShaderGroup.render(partialTicks);
         RenderSystem.popMatrix();
+        RenderSystem.matrixMode(5888);
         RenderSystem.enableTexture();
         this.mc.getFramebuffer().bindFramebuffer(true);
     }
@@ -676,8 +696,6 @@ public class GameRenderer implements IResourceManagerReloadListener, AutoCloseab
                     RenderSystem.popMatrix();
                     RenderSystem.enableTexture();
                 }
-
-                this.renderFxaa(partialTicks);
 
                 this.mc.getFramebuffer().bindFramebuffer(true);
             } else {
@@ -1121,6 +1139,12 @@ public class GameRenderer implements IResourceManagerReloadListener, AutoCloseab
             }
         }
 
+        // Antialias the finished frame here, at the same point a shader pack runs its final
+        // composite (Shaders.endRender above). Running it this late means the hand and the ESP
+        // overlays get antialiased along with the world, and it keeps the pass clear of the
+        // vanilla post-process slot that the entity-outline and spectator shaders own.
+        this.renderSmaa(partialTicks);
+
         this.mc.getProfiler().endSection();
     }
 
@@ -1207,7 +1231,7 @@ public class GameRenderer implements IResourceManagerReloadListener, AutoCloseab
     private void frameInit() {
         Config.frameStart();
         GlErrors.frameStart();
-        this.updateFxaaState();
+        this.updateSmaaState();
 
         if (!this.initialized) {
             ReflectorResolver.resolve();
@@ -1239,10 +1263,6 @@ public class GameRenderer implements IResourceManagerReloadListener, AutoCloseab
             this.lastServerTime = 0L;
             this.lastServerTicks = 0;
             this.updatedWorld = world;
-        }
-
-        if (!this.setFxaaShader(Shaders.configAntialiasingLevel)) {
-            Shaders.configAntialiasingLevel = 0;
         }
 
         if (this.mc.currentScreen != null && this.mc.currentScreen.getClass() == ChatScreen.class) {
@@ -1285,60 +1305,6 @@ public class GameRenderer implements IResourceManagerReloadListener, AutoCloseab
             Reflector.setFieldValue(p_updateMainMenu_1_, Reflector.GuiMainMenu_splashText, s);
         } catch (Throwable throwable) {
         }
-    }
-
-    public boolean setFxaaShader(int p_setFxaaShader_1_) {
-        if (!GLX.isUsingFBOs()) {
-            return false;
-        } else if (this.shaderGroup != null && !this.fxaaShaders.containsValue(this.shaderGroup)) {
-            // A non-FXAA post shader (entity/manual) owns shaderGroup right now; leave it alone.
-            return true;
-        } else if (!isFxaaLevel(p_setFxaaShader_1_)) {
-            if (this.shaderGroup == null) {
-                return true;
-            } else {
-                this.shaderGroup.close();
-                this.fxaaShaders.values().remove(this.shaderGroup);
-                this.shaderGroup = null;
-                return true;
-            }
-        } else if (this.shaderGroup != null && this.shaderGroup == this.fxaaShaders.get(p_setFxaaShader_1_)) {
-            return true;
-        } else if (this.mc.world == null) {
-            return true;
-        } else {
-            String s;
-
-            if (Shaders.isSmaaLevel(p_setFxaaShader_1_)) {
-                s = "shaders/post/smaa_of_" + Shaders.getSmaaLevel(p_setFxaaShader_1_) + "x.json";
-            } else if (p_setFxaaShader_1_ < 0) {
-                s = "shaders/post/fxaa_cas_of_" + (-p_setFxaaShader_1_) + "x.json";
-            } else {
-                s = "shaders/post/fxaa_of_" + p_setFxaaShader_1_ + "x.json";
-            }
-
-            this.loadShader(new ResourceLocation(s));
-
-            if (this.useShader) {
-                this.fxaaShaders.put(p_setFxaaShader_1_, this.shaderGroup);
-            }
-
-            return this.useShader;
-        }
-    }
-
-    private static boolean isFxaaLevel(int level) {
-        if (level == 0) {
-            return false;
-        }
-
-        for (int aaLevel : Shaders.AA_LEVELS) {
-            if (aaLevel == level) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     public IResourceType getResourceType() {

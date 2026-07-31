@@ -391,13 +391,7 @@ public class GuiShaders extends GuiScreenOF
             return Lang.getOff();
         }
 
-        if (Shaders.isSmaaLevel(value))
-        {
-            return "SMAA " + Shaders.getSmaaLevel(value) + "x";
-        }
-
-        // Negative values are that FXAA strength plus a sharpening pass.
-        return value < 0 ? "FXAA " + (-value) + "x+CAS" : "FXAA " + value + "x";
+        return "SMAA " + Shaders.getSmaaLevel(value) + "x";
     }
 
     public static String toStringValue(float val, float[] values, String[] names)

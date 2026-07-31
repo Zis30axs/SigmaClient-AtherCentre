@@ -33,10 +33,11 @@ public class GuiQualitySettingsOF extends GuiScreenOF
             int k = this.height / 6 + 21 * (i / 2) - 12;
             Widget widget = this.addButton(abstractoption.createWidget(this.minecraft.gameSettings, j, k, 150));
 
-            // AA_LEVEL now drives the FXAA post-process pass (see GameRenderer#updateFxaaState),
-            // so keep it interactive. AF_LEVEL stays disabled: anisotropic filtering has no
-            // backing implementation in this client.
-            if (abstractoption == AbstractOption.AF_LEVEL)
+            // Neither of these has a backing implementation in this client: MSAA can't be used
+            // because the world renders into a non-multisample FBO whose depth ESP samples as a
+            // texture, and anisotropic filtering was never wired up. Antialiasing lives in the
+            // shader settings screen instead.
+            if (abstractoption == AbstractOption.AF_LEVEL || abstractoption == AbstractOption.AA_LEVEL)
             {
                 widget.active = false;
             }

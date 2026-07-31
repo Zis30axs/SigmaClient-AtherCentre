@@ -1570,18 +1570,6 @@ public class Minecraft extends RecursiveEventLoop<Runnable> implements ISnooperI
      * Runs the current tick.
      */
     public void runTick() {
-        // Glue RotationCore to the real camera once per tick. This must run
-        // BEFORE the EventRunTicks PRE dispatch below: Scaffold publishes its
-        // silent rotation from that event, and the published value has to
-        // survive until the player tick consumes it (movement fix in
-        // EventMoveInput/EventMoveFlying/EventJump plus the outbound
-        // EventMotion). Resetting any later clobbers it back to the camera
-        // and silently disables the movement fix while scaffolding.
-        if (player != null) {
-            RotationCore.currentYaw = player.rotationYaw;
-            RotationCore.currentPitch = player.rotationPitch;
-        }
-
         // mmdskin：模型仓储 tick + 配置轮盘/快捷模型键位轮询。
         com.shiroha.mmdskin.MmdSkinClientHooks.onClientTick(this);
 
@@ -1622,6 +1610,12 @@ public class Minecraft extends RecursiveEventLoop<Runnable> implements ISnooperI
         }
 
         this.profiler.endStartSection("textures");
+
+        //去你吗的 这玩意就要在这 再动跟你急 :: -> fixed fix fixlook CorrectMovement
+        if (player != null) {
+            RotationCore.currentYaw = player.rotationYaw;
+            RotationCore.currentPitch = player.rotationPitch;
+        }
 
         EventBus.call(new EventTick());
 
