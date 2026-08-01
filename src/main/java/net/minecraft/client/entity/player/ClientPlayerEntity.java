@@ -122,6 +122,16 @@ public class ClientPlayerEntity extends AbstractClientPlayerEntity {
     public boolean serverSprintState;
 
     /**
+     * Remaining ticks during which the sprint-start logic must not re-acquire
+     * sprint. Set by {@link PlayerEntity} when an attack runs with AutoSprint's
+     * KeepSprint disabled, so the attack's {@code setSprinting(false)} survives
+     * until {@link #sendSprintingPacket()} flushes STOP_SPRINTING. Without this,
+     * an attack processed before {@code livingTick} (manual click / EventPlace)
+     * is undone in the same tick and the KeepSprint toggle has no effect.
+     */
+    private int sprintSuppressionTicks;
+
+    /**
      * Reset to 0 every time position is sent to the server, used to send periodic
      * updates every 20 ticks even when the
      * player is not moving.
@@ -1011,7 +1021,7 @@ public class ClientPlayerEntity extends AbstractClientPlayerEntity {
 
         if ((this.onGround || this.canSwim()) && !flag1 && !flag2 && this.isUsingSwimmingAnimation()
                 && !this.isSprinting() && flag4 && !this.isHandActive() && !this.isPotionActive(Effects.BLINDNESS)
-                && !sprintStartRestricted) {
+                && !sprintStartRestricted && this.sprintSuppressionTicks <= 0) {
             if (this.sprintToggleTimer <= 0 && !this.mc.gameSettings.keyBindSprint.isKeyDown()) {
                 this.sprintToggleTimer = 7;
             } else {
@@ -1029,7 +1039,8 @@ public class ClientPlayerEntity extends AbstractClientPlayerEntity {
         if (!this.isSprinting() && canWaterSprint && this.isUsingSwimmingAnimation() && flag4
                 && !this.isHandActive() && !this.isPotionActive(Effects.BLINDNESS)
                 && !sprintStartRestricted
-                && this.mc.gameSettings.keyBindSprint.isKeyDown()) {
+                && this.mc.gameSettings.keyBindSprint.isKeyDown()
+                && this.sprintSuppressionTicks <= 0) {
             this.setSprinting(true);
         }
 
@@ -1183,6 +1194,10 @@ public class ClientPlayerEntity extends AbstractClientPlayerEntity {
             this.horseJumpPower = 0.0F;
         }
 
+        if (this.sprintSuppressionTicks > 0) {
+            --this.sprintSuppressionTicks;
+        }
+
         SneakMovementDebug.captureBeforeLiving(this);
         super.livingTick();
         SneakMovementDebug.captureAfterLiving(this, this.getOffGroundSpeed());
@@ -1191,6 +1206,15 @@ public class ClientPlayerEntity extends AbstractClientPlayerEntity {
             this.abilities.isFlying = false;
             this.sendPlayerAbilities();
         }
+    }
+
+    /**
+     * Suppresses sprint re-acquisition for the given number of ticks, so an
+     * attack-time {@code setSprinting(false)} is not immediately undone by the
+     * held sprint key and reaches the server as STOP_SPRINTING.
+     */
+    public void suppressSprint(int ticks) {
+        this.sprintSuppressionTicks = Math.max(this.sprintSuppressionTicks, ticks);
     }
 
     private void handlePortalTeleportation() {

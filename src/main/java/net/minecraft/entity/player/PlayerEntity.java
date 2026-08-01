@@ -19,6 +19,7 @@ import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.RespawnAnchorBlock;
 import net.minecraft.enchantment.EnchantmentHelper;
+import net.minecraft.client.entity.player.ClientPlayerEntity;
 import net.minecraft.entity.*;
 import net.minecraft.entity.ai.attributes.AttributeModifierMap;
 import net.minecraft.entity.ai.attributes.Attributes;
@@ -1240,6 +1241,15 @@ public abstract class PlayerEntity extends LivingEntity {
                             this.setMotion(this.getMotion().mul(0.6D, 1.0D, 0.6D));
                             if (!Client.getInstance().moduleManager.getModuleByClass(AutoSprint.class).getBooleanValueFromSettingName("KeepSprint")) {
                                 this.setSprinting(false);
+                                // Keep the sprint flag off for the rest of this tick:
+                                // manual clicks and EventPlace attacks run before
+                                // livingTick, whose sprint-start block would otherwise
+                                // re-acquire sprint (AutoSprint holds the key) before
+                                // sendSprintingPacket runs, so the STOP never reaches
+                                // the server and the KeepSprint toggle has no effect.
+                                if (this instanceof ClientPlayerEntity) {
+                                    ((ClientPlayerEntity) this).suppressSprint(1);
+                                }
                             }
                         }
 
