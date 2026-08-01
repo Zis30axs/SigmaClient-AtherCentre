@@ -1430,9 +1430,10 @@ public class ClientPlayerEntity extends AbstractClientPlayerEntity {
 
     private boolean isUsingSwimmingAnimation() {
         double d0 = 0.8D;
-        // <=1.14.1 always requires the full 0.8 forward input, even under water
-        boolean useImpulseThreshold = JelloPortal.getVersion().newerThan(ProtocolVersion.v1_14_1)
-                && this.canSwim();
+        // <=1.14.1 always requires the full 0.8 forward input, even under water.
+        // 1.14.2+ uses the impulse threshold on land too: the 1.21.5+ diagonal
+        // normalize drops a strafe+forward tick to 0.707, which never clears 0.8.
+        boolean useImpulseThreshold = JelloPortal.getVersion().newerThan(ProtocolVersion.v1_14_1);
         return useImpulseThreshold ? this.movementInput.isMovingForward()
                 : (double) this.movementInput.moveForward >= 0.8D;
     }

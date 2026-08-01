@@ -5,12 +5,6 @@ import com.mentalfrostbyte.jello.event.impl.player.movement.EventMotion;
 import com.mentalfrostbyte.jello.module.Module;
 import com.mentalfrostbyte.jello.module.data.ModuleCategory;
 import com.mentalfrostbyte.jello.module.settings.impl.ModeSetting;
-import net.minecraft.network.IPacket;
-import net.minecraft.network.NetworkManager;
-import net.minecraft.network.play.client.CPlayerPacket;
-import net.minecraft.network.play.server.SConfirmTransactionPacket;
-import net.minecraft.network.play.server.SEntityTeleportPacket;
-import net.minecraft.network.play.server.SEntityVelocityPacket;
 import team.sdhq.eventBus.annotations.EventTarget;
 
 import java.util.Objects;
