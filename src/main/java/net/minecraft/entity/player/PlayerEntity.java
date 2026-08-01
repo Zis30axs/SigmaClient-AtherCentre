@@ -1045,7 +1045,13 @@ public abstract class PlayerEntity extends LivingEntity {
         // MODIFICATION END
         // MODIFICATION START (ENDS AFTER NEXT LINE): Add `event.getSituation() == Situation.PLAYER`
         float f = JelloPortal.getVersion().olderThanOrEqualTo(ProtocolVersion.v1_10) ? 1.0F : this.stepHeight;
-        if (event.getSituation() == EventSafeWalk.Situation.SAFE
+        boolean safeWalkSituation = event.getSituation() == EventSafeWalk.Situation.SAFE;
+        SneakPhysicsDebug.beginBackoff(this, vec, f, safeWalkSituation);
+        boolean ran = false;
+        int iterationsX = 0;
+        int iterationsZ = 0;
+        int iterationsXZ = 0;
+        if (safeWalkSituation
                 || (!PacketFixFor1_21Plus.shouldUseVanilla1_21MovementPhysics() || !(vec.y > 0.0D))
                 && !this.abilities.isFlying && (mover == MoverType.SELF || mover == MoverType.PLAYER)
                 && this.isStayingOnGroundSurface() && this.isAboveGround(f)) {
@@ -1054,6 +1060,8 @@ public abstract class PlayerEntity extends LivingEntity {
             double d2 = 0.05D;
 
             while (d0 != 0.0D && this.isSpaceAroundPlayerEmpty(d0, 0.0D, f)) {
+                iterationsX++;
+
                 if (d0 < 0.05D && d0 >= -0.05D) {
                     d0 = 0.0D;
                 } else if (d0 > 0.0D) {
@@ -1064,6 +1072,8 @@ public abstract class PlayerEntity extends LivingEntity {
             }
 
             while (d1 != 0.0D && this.isSpaceAroundPlayerEmpty(0.0D, d1, f)) {
+                iterationsZ++;
+
                 if (d1 < 0.05D && d1 >= -0.05D) {
                     d1 = 0.0D;
                 } else if (d1 > 0.0D) {
@@ -1074,6 +1084,8 @@ public abstract class PlayerEntity extends LivingEntity {
             }
 
             while (d0 != 0.0D && d1 != 0.0D && this.isSpaceAroundPlayerEmpty(d0, d1, f)) {
+                iterationsXZ++;
+
                 if (d0 < 0.05D && d0 >= -0.05D) {
                     d0 = 0.0D;
                 } else if (d0 > 0.0D) {
@@ -1092,7 +1104,10 @@ public abstract class PlayerEntity extends LivingEntity {
             }
 
             vec = new Vector3d(d0, vec.y, d1);
+            ran = true;
         }
+
+        SneakPhysicsDebug.finishBackoff(this, vec, ran, iterationsX, iterationsZ, iterationsXZ);
 
         // MODIFICATION START: Send off edge `SafeWalkEvent`
         EventSafeWalk offEdgeEvent = new EventSafeWalk(false);
@@ -1113,9 +1128,25 @@ public abstract class PlayerEntity extends LivingEntity {
 
     private boolean isSpaceAroundPlayerEmpty(double offsetX, double offsetZ, float stepHeight) {
         AxisAlignedBB box = this.getBoundingBox();
-        // <=1.20.3 used no probe offset, 1.20.5-1.21.4 used 1.0E-5, 1.21.5+ folds it into stepHeight
-        double constant;
         ProtocolVersion targetVersion = JelloPortal.getVersion();
+
+        // 1.21.5+ (Yarn signature change to (double, double, double) between
+        // 1.21.4 and 1.21.5; body confirmed in 1.21.11 namedSrc
+        // PlayerEntity.isSpaceAroundPlayerEmpty): the probe is contracted by
+        // 1.0E-7 on minX/minZ/maxX/maxZ and extended by 1.0E-7 below
+        // minY - stepHeight. The <=1.21.4 probe had no X/Z contraction.
+        if (targetVersion.newerThanOrEqualTo(ProtocolVersion.v1_21_5)) {
+            return this.world.hasNoCollisions(this, new AxisAlignedBB(
+                    box.minX + 1.0E-7D + offsetX,
+                    box.minY - (double) stepHeight - 1.0E-7D,
+                    box.minZ + 1.0E-7D + offsetZ,
+                    box.maxX - 1.0E-7D + offsetX,
+                    box.minY,
+                    box.maxZ - 1.0E-7D + offsetZ));
+        }
+
+        // <=1.20.3 used no probe offset, 1.20.5-1.21.4 used 1.0E-5 below minY.
+        double constant;
 
         if (targetVersion.olderThanOrEqualTo(ProtocolVersion.v1_20_3)) {
             constant = 0.0D;
@@ -1467,6 +1498,23 @@ public abstract class PlayerEntity extends LivingEntity {
             this.addExhaustion(0.2F);
         } else {
             this.addExhaustion(0.05F);
+        }
+    }
+
+    @Override
+    public void onEnterBubbleColumnWithAirAbove(boolean downwards) {
+        // 1.21.11 PlayerEntity.onBubbleColumnSurfaceCollision: flying players are
+        // exempt from bubble-column velocity effects.
+        if (!(ModernMovementPhysics.shouldUseModernBlockEffects() && this.abilities.isFlying)) {
+            super.onEnterBubbleColumnWithAirAbove(downwards);
+        }
+    }
+
+    @Override
+    public void onEnterBubbleColumn(boolean downwards) {
+        // 1.21.11 PlayerEntity.onBubbleColumnCollision: flying players are exempt.
+        if (!(ModernMovementPhysics.shouldUseModernBlockEffects() && this.abilities.isFlying)) {
+            super.onEnterBubbleColumn(downwards);
         }
     }
 

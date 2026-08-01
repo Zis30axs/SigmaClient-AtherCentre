@@ -2,6 +2,7 @@ package net.minecraft.block;
 
 import java.util.Random;
 import net.minecraft.entity.Entity;
+import net.minecraft.entity.ModernMovementPhysics;
 import net.minecraft.fluid.Fluid;
 import net.minecraft.fluid.FluidState;
 import net.minecraft.fluid.Fluids;
@@ -35,8 +36,22 @@ public class BubbleColumnBlock extends Block implements IBucketPickupHandler
     public void onEntityCollision(BlockState state, World worldIn, BlockPos pos, Entity entityIn)
     {
         BlockState blockstate = worldIn.getBlockState(pos.up());
+        boolean airAbove;
 
-        if (blockstate.isAir())
+        if (ModernMovementPhysics.shouldUseModernBlockEffects())
+        {
+            // 1.21.11 BubbleColumnBlock.onEntityCollision:
+            // surface variant requires the block above to have no collision
+            // shape AND no fluid (not merely isAir()).
+            airAbove = blockstate.getCollisionShape(worldIn, pos).isEmpty()
+                    && blockstate.getFluidState().isEmpty();
+        }
+        else
+        {
+            airAbove = blockstate.isAir();
+        }
+
+        if (airAbove)
         {
             entityIn.onEnterBubbleColumnWithAirAbove(state.get(DRAG));
 

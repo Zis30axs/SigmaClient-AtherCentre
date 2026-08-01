@@ -8,6 +8,7 @@ import de.florianmichael.viamcp.fixes.PacketFixFor1_21Plus;
 import net.minecraft.client.GameSettings;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.entity.player.ClientPlayerEntity;
+import net.minecraft.entity.SneakMovementDebug;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.CompoundNBT;
 import net.minecraft.nbt.INBT;
@@ -117,6 +118,7 @@ public class MovementInputFromOptions extends MovementInput {
 
         this.jump = eventMoveButton.jump;
         this.sneaking = eventMoveButton.sneak;
+        SneakMovementDebug.captureRawInput(this.moveForward, this.moveStrafe);
 
         final EventMoveInput eventMoveInput = new EventMoveInput(this.moveForward, this.moveStrafe, this.jump, this.sneaking, getSneakSlowdownFactor());
         EventBus.call(eventMoveInput);
@@ -132,11 +134,13 @@ public class MovementInputFromOptions extends MovementInput {
         // BEFORE sneak/item slowdown. Skipping it leaves raw (1,1)*0.3 into square
         // compensation and makes sneak-diagonal ~sqrt(2) too fast (Grim Simulation).
         PacketFixFor1_21Plus.normalizeRaw1_21_5MovementInput(this);
+        SneakMovementDebug.captureNormalizedInput(this.moveForward, this.moveStrafe);
 
         if (shouldApplySneakSlowdown(forcedDown, this.sneaking)) {
             this.moveStrafe *= eventMoveInput.sneakFactor;
             this.moveForward *= eventMoveInput.sneakFactor;
         }
+        SneakMovementDebug.captureSneakInput(this.moveForward, this.moveStrafe);
     }
 
     /**
@@ -181,14 +185,17 @@ public class MovementInputFromOptions extends MovementInput {
 
         this.jump = this.gameSettings.keyBindJump.isKeyDown();
         this.sneaking = this.gameSettings.keyBindSneak.isKeyDown();
+        SneakMovementDebug.captureRawInput(this.moveForward, this.moveStrafe);
 
         // Same 1.21.5+ KeyboardInput diagonal normalize as tickMovement (before sneak).
         PacketFixFor1_21Plus.normalizeRaw1_21_5MovementInput(this);
+        SneakMovementDebug.captureNormalizedInput(this.moveForward, this.moveStrafe);
 
         if (shouldApplySneakSlowdown(forcedDown, this.sneaking)) {
             float sneakFactor = getSneakSlowdownFactor();
             this.moveStrafe *= sneakFactor;
             this.moveForward *= sneakFactor;
         }
+        SneakMovementDebug.captureSneakInput(this.moveForward, this.moveStrafe);
     }
 }

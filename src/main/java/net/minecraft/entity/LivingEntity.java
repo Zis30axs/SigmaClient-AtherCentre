@@ -214,6 +214,12 @@ public abstract class LivingEntity extends Entity {
     protected int spinAttackDuration;
     private float swimAnimation;
     private float lastSwimAnimation;
+    /**
+     * Set by {@link #travel} when the modern swim-hop override (motion.y = 0.3)
+     * fired this tick. Consumed by the post-travel block-effects stage in
+     * {@link #livingTick} for diagnostics and phase selection. Debug-only state.
+     */
+    private boolean travelSwimHopCandidate;
     protected Brain<?> brain;
 
     protected LivingEntity(EntityType<? extends LivingEntity> type, World worldIn) {
@@ -2136,6 +2142,8 @@ public abstract class LivingEntity extends Entity {
     }
 
     public void travel(Vector3d travelVector) {
+        this.travelSwimHopCandidate = false;
+
         if (this.isServerWorld() || this.canPassengerSteer()) {
             final boolean use1_21Movement = PacketFixFor1_21Plus.shouldUseVanilla1_21MovementPhysics();
             final ProtocolVersion targetVersion = ViaLoadingBase.getInstance().getTargetVersion();
@@ -2191,8 +2199,10 @@ public abstract class LivingEntity extends Entity {
                         : this.applyFluidMovingSpeed(d0,
                                 targetVersion.newerThan(ProtocolVersion.v1_13_2) && flag, this.getMotion());
                 this.setMotion(vector3d2);
+                ModernMovementDebug.captureMotion(this, "afterFluid", this.getMotion());
 
                 if (this.collidedHorizontally && this.isOffsetPositionInLiquid(vector3d2.x, vector3d2.y + (double) 0.6F - this.getPosY() + d8, vector3d2.z)) {
+                    this.travelSwimHopCandidate = true;
                     this.setMotion(vector3d2.x, (double) 0.3F, vector3d2.z);
                 }
             } else if (this.isInLava() && this.shouldSwimInFluids() && !this.func_230285_a_(fluidstate.getFluid())) {
@@ -2225,6 +2235,7 @@ public abstract class LivingEntity extends Entity {
                 Vector3d vector3d4 = this.getMotion();
 
                 if (this.collidedHorizontally && this.isOffsetPositionInLiquid(vector3d4.x, vector3d4.y + (double) 0.6F - this.getPosY() + d7, vector3d4.z)) {
+                    this.travelSwimHopCandidate = true;
                     this.setMotion(vector3d4.x, (double) 0.3F, vector3d4.z);
                 }
             } else if (this.isElytraFlying()) {
@@ -2282,6 +2293,7 @@ public abstract class LivingEntity extends Entity {
                 float f3 = this.world.getBlockState(blockpos).getBlock().getSlipperiness();
                 float f4 = this.onGround ? f3 * 0.91F : 0.91F;
                 Vector3d vector3d5 = this.applyMovementInput(travelVector, f3);
+                SneakMovementDebug.captureMotionAfterInput(this, vector3d5);
                 double d2 = vector3d5.y;
 
                 if (this.isPotionActive(Effects.LEVITATION)) {
@@ -2301,6 +2313,7 @@ public abstract class LivingEntity extends Entity {
                 }
 
                 this.setMotion(vector3d5.x * (double) f4, d2 * (double) 0.98F, vector3d5.z * (double) f4);
+                SneakMovementDebug.captureMotionAfterDrag(this);
             }
         }
 
@@ -2768,11 +2781,35 @@ public abstract class LivingEntity extends Entity {
 
         this.world.getProfiler().endSection();
         this.world.getProfiler().startSection("travel");
+        ModernMovementDebug.resetTick(this);
+        boolean modernDebug = ModernMovementDebug.isEnabled();
+        double debugStartX = modernDebug ? this.getPosX() : 0.0D;
+        double debugStartY = modernDebug ? this.getPosY() : 0.0D;
+        double debugStartZ = modernDebug ? this.getPosZ() : 0.0D;
+        Vector3d debugMotionBefore = modernDebug ? this.getMotion() : null;
         PacketFixFor1_21_5Plus.applyTravelInputFactors(this);
         this.updateElytra();
         AxisAlignedBB axisalignedbb = this.getBoundingBox();
         this.travel(new Vector3d((double) this.moveStrafing, (double) this.moveVertical, (double) this.moveForward));
         this.world.getProfiler().endSection();
+
+        if (ModernMovementPhysics.shouldDeferInsideBlockEffects(this) && !this.noClip && !this.removed) {
+            // 1.21.11 LivingEntity.tickMovement: travel() -> tickBlockCollision().
+            // Entity.move deferred the legacy in-move doBlockCollisions for this
+            // entity, so this is the single inside-block application point and it
+            // runs on the final post-travel (post-swim-hop) motion, reusing the
+            // original 1.16.4 traversal and BubbleColumnBlock callbacks.
+            ModernMovementDebug.beginPostTravelPhase(this);
+            ModernMovementDebug.captureMotion(this, "beforeBlockEffects", this.getMotion());
+            this.doBlockCollisions();
+            ModernMovementDebug.captureMotion(this, "afterBlockEffects", this.getMotion());
+            ModernMovementDebug.logTick(this,
+                    this.travelSwimHopCandidate ? "swim-hop-candidate" : "block-effects",
+                    debugMotionBefore, this.travelSwimHopCandidate,
+                    this.collidedHorizontally, this.onGround,
+                    debugStartX, debugStartY, debugStartZ);
+        }
+
         this.world.getProfiler().startSection("push");
 
         if (this.spinAttackDuration > 0) {

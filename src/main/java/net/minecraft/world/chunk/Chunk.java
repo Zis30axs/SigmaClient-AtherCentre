@@ -616,8 +616,11 @@ public class Chunk implements IChunk {
         int sectionOffset = WorldHeightHelper.getSectionOffset();
         boolean flag1 = false;
 
-        // === DEBUG: dump bitmask so we can see what ViaBackwards sends ===
-        if (WorldHeightHelper.isExtendedHeight()) {
+        // Debug-only: dump bitmask so we can see what ViaBackwards sends.
+        // Was unconditional for extended-height targets, which printed one
+        // INFO line (plus string allocations) per chunk on the render thread.
+        if (WorldHeightHelper.isExtendedHeight()
+                && com.mentalfrostbyte.jello.util.game.world.ChunkDataInterceptor.isDebugEnabled()) {
             LOGGER.info("[ChunkDebug] Chunk({},{}) availableSections=0x{} (binary={}), sectionCount={}, offset={}",
                     this.pos.x, this.pos.z,
                     Integer.toHexString(availableSections),

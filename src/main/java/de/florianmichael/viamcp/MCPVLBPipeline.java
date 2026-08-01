@@ -2,6 +2,7 @@ package de.florianmichael.viamcp;
 
 import com.mentalfrostbyte.jello.util.game.world.ChunkDataInterceptor;
 import com.mentalfrostbyte.jello.util.game.network.ServerboundPacketDebugHandler;
+import com.mentalfrostbyte.jello.util.game.network.UseItemRotationDebug;
 import com.viaversion.viaversion.api.connection.UserConnection;
 import de.florianmichael.viamcp.fixes.PacketFixFor1_21Plus;
 import de.florianmichael.vialoadingbase.netty.event.CompressionReorderEvent;
@@ -88,7 +89,7 @@ public class MCPVLBPipeline extends VLBPipeline {
     }
 
     private void installServerboundDebugHandler(ChannelHandlerContext ctx) {
-        if (!ServerboundPacketDebugHandler.isDebugEnabled()
+        if ((!ServerboundPacketDebugHandler.isDebugEnabled() && !UseItemRotationDebug.isEnabled())
                 || ctx.pipeline().get(ServerboundPacketDebugHandler.HANDLER_NAME) != null) {
             return;
         }
@@ -134,7 +135,7 @@ public class MCPVLBPipeline extends VLBPipeline {
     }
 
     private void moveServerboundDebugHandler(ChannelHandlerContext ctx) {
-        if (!ServerboundPacketDebugHandler.isDebugEnabled()) {
+        if (!ServerboundPacketDebugHandler.isDebugEnabled() && !UseItemRotationDebug.isEnabled()) {
             return;
         }
 
@@ -146,7 +147,8 @@ public class MCPVLBPipeline extends VLBPipeline {
     }
 
     private void logPipeline(ChannelHandlerContext ctx, String reason) {
-        if (ChunkDataInterceptor.isDebugEnabled() || ServerboundPacketDebugHandler.isDebugEnabled()) {
+        if (ChunkDataInterceptor.isDebugEnabled() || ServerboundPacketDebugHandler.isDebugEnabled()
+                || UseItemRotationDebug.isEnabled()) {
             LOGGER.info("[ExtendedHeight] Chunk interceptor {}. Pipeline={}", reason, ctx.pipeline().names());
         }
     }

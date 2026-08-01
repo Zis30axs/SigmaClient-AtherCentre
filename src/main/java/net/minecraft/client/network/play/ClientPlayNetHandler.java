@@ -40,7 +40,6 @@ import net.minecraft.block.Block;
 import net.minecraft.client.ClientBrandRetriever;
 import net.minecraft.client.GameSettings;
 import net.minecraft.client.Minecraft;
-import de.florianmichael.viamcp.fixes.PacketFixFor1_21Plus;
 import net.minecraft.client.audio.BeeAngrySound;
 import net.minecraft.client.audio.BeeFlightSound;
 import net.minecraft.client.audio.BeeSound;
@@ -389,7 +388,7 @@ public class ClientPlayNetHandler implements IClientPlayNetHandler {
      */
     public void handleJoinGame(SJoinGamePacket packetIn) {
         PacketThreadUtil.checkThreadAndEnqueue(packetIn, this, this.client);
-        PacketFixFor1_21Plus.resetPlayerInputState();
+        CPlayerInputPacket.resetPlayerInputState();
         ExtendedChunkDataStore.clearAll();
         com.mentalfrostbyte.jello.util.game.world.ExtendedBlockStateMapper.warmupAsync();
         this.client.playerController = new PlayerController(this.client, this);
@@ -915,7 +914,7 @@ public class ClientPlayNetHandler implements IClientPlayNetHandler {
      */
     public void onDisconnect(ITextComponent reason) {
         ServerConnectionErrorLogger.logDisconnect("ClientPlayNetHandler", field_243491_b, reason);
-        PacketFixFor1_21Plus.resetPlayerInputState();
+        CPlayerInputPacket.resetPlayerInputState();
         this.client.unloadWorld();
 
         if (this.guiScreenServer != null) {

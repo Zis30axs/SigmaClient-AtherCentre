@@ -611,6 +611,7 @@ public abstract class Entity implements INameable, ICommandSource {
             }
 
             this.world.getProfiler().startSection("move");
+            SneakPhysicsDebug.beginMove(this);
 
             if (this.motionMultiplier.lengthSquared() > 1.0E-7D) {
                 pos = pos.mul(this.motionMultiplier);
@@ -619,7 +620,10 @@ public abstract class Entity implements INameable, ICommandSource {
             }
 
             pos = this.maybeBackOffFromEdge(pos, typeIn);
+            SneakMovementDebug.captureRequestedMove(this, pos);
+            ModernMovementDebug.captureMotion(this, "requestedMove", pos);
             Vector3d vector3d = this.getAllowedMovement(pos);
+            ModernMovementDebug.captureMotion(this, "collisionResolved", vector3d);
             double allowedLengthSquared = vector3d.lengthSquared();
             // 1.20.5+ also applies tiny movements when the collision adjustment is small
             boolean modernSmallMovement = ViaLoadingBase.getInstance().getTargetVersion()
@@ -629,6 +633,7 @@ public abstract class Entity implements INameable, ICommandSource {
             if (allowedLengthSquared > 1.0E-7D || modernSmallMovement) {
                 this.setBoundingBox(this.getBoundingBox().offset(vector3d));
                 this.resetPositionToBB();
+                SneakMovementDebug.captureMoveResult(this);
             }
 
             this.world.getProfiler().endSection();
@@ -721,18 +726,23 @@ public abstract class Entity implements INameable, ICommandSource {
                 }
             }
 
-            try {
-                this.doBlockCollisions();
-            } catch (Throwable throwable) {
-                CrashReport crashreport = CrashReport.makeCrashReport(throwable, "Checking entity block collision");
-                CrashReportCategory crashreportcategory = crashreport
-                        .makeCategory("Entity being checked for collision");
-                this.fillCrashReport(crashreportcategory);
-                throw new ReportedException(crashreport);
+            if (!ModernMovementPhysics.shouldDeferInsideBlockEffects(this)) {
+                try {
+                    this.doBlockCollisions();
+                } catch (Throwable throwable) {
+                    CrashReport crashreport = CrashReport.makeCrashReport(throwable, "Checking entity block collision");
+                    CrashReportCategory crashreportcategory = crashreport
+                            .makeCategory("Entity being checked for collision");
+                    this.fillCrashReport(crashreportcategory);
+                    throw new ReportedException(crashreport);
+                }
             }
 
             float f2 = this.getSpeedFactor();
             this.setMotion(this.getMotion().mul((double) f2, 1.0D, (double) f2));
+            ModernMovementDebug.captureMotion(this, "afterMove", this.getMotion());
+            SneakPhysicsDebug.finishMove(this, vector3d, this.collidedHorizontally,
+                    this.collidedVertically, this.getMotion());
 
             if (this.world.getStatesInArea(this.getBoundingBox().shrink(0.001D)).noneMatch((p_233572_0_) -> {
                 return p_233572_0_.isIn(BlockTags.FIRE) || p_233572_0_.isIn(Blocks.LAVA);
@@ -2742,27 +2752,15 @@ private Vector3d getAllowedMovementModernStep(Vector3d vec, Vector3d adjusted, A
 
     public void onEnterBubbleColumnWithAirAbove(boolean downwards) {
         Vector3d vector3d = this.getMotion();
-        double d0;
-
-        if (downwards) {
-            d0 = Math.max(-0.9D, vector3d.y - 0.03D);
-        } else {
-            d0 = Math.min(1.8D, vector3d.y + 0.1D);
-        }
-
+        double d0 = ModernMovementPhysics.computeBubbleColumnY(vector3d.y, downwards, true);
+        ModernMovementDebug.trackBubbleEffect(this, downwards, true, vector3d.y, d0);
         this.setMotion(vector3d.x, d0, vector3d.z);
     }
 
     public void onEnterBubbleColumn(boolean downwards) {
         Vector3d vector3d = this.getMotion();
-        double d0;
-
-        if (downwards) {
-            d0 = Math.max(-0.3D, vector3d.y - 0.03D);
-        } else {
-            d0 = Math.min(0.7D, vector3d.y + 0.06D);
-        }
-
+        double d0 = ModernMovementPhysics.computeBubbleColumnY(vector3d.y, downwards, false);
+        ModernMovementDebug.trackBubbleEffect(this, downwards, false, vector3d.y, d0);
         this.setMotion(vector3d.x, d0, vector3d.z);
         this.fallDistance = 0.0F;
     }

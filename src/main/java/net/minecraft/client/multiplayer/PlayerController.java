@@ -451,8 +451,11 @@ public class PlayerController
     {
         if (player instanceof ClientPlayerEntity clientPlayer) {
             InteractionSemantics.sendPreUseMovement(this.connection, clientPlayer);
+            clientPlayer.sendPreUseItemRotation();
         }
 
+        com.mentalfrostbyte.jello.util.game.network.UseItemRotationDebug.logUseItemCreate(
+                player instanceof ClientPlayerEntity ? (ClientPlayerEntity) player : null, hand);
         this.connection.sendPacket(new CPlayerTryUseItemPacket(hand));
     }
 

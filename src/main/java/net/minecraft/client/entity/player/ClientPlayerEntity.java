@@ -26,6 +26,7 @@ import net.minecraft.entity.Entity;
 import net.minecraft.entity.IJumpingMount;
 import net.minecraft.entity.MoverType;
 import net.minecraft.entity.Pose;
+import net.minecraft.entity.SneakMovementDebug;
 import net.minecraft.entity.item.BoatEntity;
 import net.minecraft.entity.item.minecart.AbstractMinecartEntity;
 import net.minecraft.inventory.EquipmentSlotType;
@@ -101,6 +102,15 @@ public class ClientPlayerEntity extends AbstractClientPlayerEntity {
      * be re-transmitted
      */
     public float lastReportedPitch;
+    /**
+     * The yaw/pitch actually used by the most recent movement packet
+     * (after EventMotion / silent-rotation modules have resolved it).
+     * Used to keep the 1.21+ USE_ITEM rotation in sync with the movement
+     * stream the server and ViaVersion actually see.
+     */
+    private float serverRotationYaw;
+    private float serverRotationPitch;
+    private boolean serverRotationInitialized;
     private boolean prevOnGround;
     private boolean prevHorizontalCollision;
     private boolean isCrouching;
@@ -218,6 +228,73 @@ public class ClientPlayerEntity extends AbstractClientPlayerEntity {
         return this.isPassenger() ? super.getYaw(partialTicks) : this.rotationYaw;
     }
 
+    public float getServerRotationYaw() {
+        return this.serverRotationInitialized ? this.serverRotationYaw : this.rotationYaw;
+    }
+
+    public float getServerRotationPitch() {
+        return this.serverRotationInitialized ? this.serverRotationPitch : this.rotationPitch;
+    }
+
+    /**
+     * 1.21+ USE_ITEM packets carry yaw/pitch on the wire. The vanilla 1.21.x
+     * client takes them straight from the player's current rotation and Grim
+     * requires them to match the server-side rotation (last movement rotation,
+     * exact float bits). This 1.16.4 client still sends the hand-only packet,
+     * so ViaVersion derives the USE_ITEM rotation from the serverbound
+     * movement stream. When the rotation the movement stream will report next
+     * differs from the rotation the server last confirmed, flush a
+     * rotation-only movement packet first so both the server and ViaVersion
+     * see the same value the USE_ITEM will carry.
+     *
+     * <p>No packet is sent while the resolved rotation equals
+     * {@link #lastReportedYaw}/{@link #lastReportedPitch}; standing still
+     * without turning therefore produces no extra traffic.
+     */
+    public void sendPreUseItemRotation() {
+        if (this.connection == null) {
+            return;
+        }
+
+        ProtocolVersion target = JelloPortal.getVersion();
+        if (target == null || target.olderThan(ProtocolVersion.v1_21)) {
+            return;
+        }
+
+        float yaw;
+        float pitch;
+        boolean visualChanged = this.rotationYaw != this.lastReportedYaw
+                || this.rotationPitch != this.lastReportedPitch;
+        if (visualChanged) {
+            // The player turned since the last reported rotation: the upcoming
+            // movement packet (modules off) will carry the current visual value.
+            yaw = this.rotationYaw;
+            pitch = this.rotationPitch;
+        } else if (this.serverRotationInitialized
+                && (this.serverRotationYaw != this.rotationYaw
+                || this.serverRotationPitch != this.rotationPitch)) {
+            // Silent rotation: the movement stream is deliberately diverged
+            // from the visual rotation; USE_ITEM must follow the stream.
+            yaw = this.serverRotationYaw;
+            pitch = this.serverRotationPitch;
+        } else {
+            return;
+        }
+
+        if (yaw == this.lastReportedYaw && pitch == this.lastReportedPitch) {
+            return;
+        }
+
+        this.connection.sendPacket(new CPlayerPacket.RotationPacket(yaw, pitch, this.onGround));
+        this.lastReportedYaw = yaw;
+        this.lastReportedPitch = pitch;
+        com.mentalfrostbyte.jello.util.game.network.UseItemRotationDebug.logPreUseFlush(this, yaw, pitch);
+    }
+
+    public int getPositionUpdateTicks() {
+        return this.positionUpdateTicks;
+    }
+
     /**
      * Called to update the entity's position/logic.
      */
@@ -233,7 +310,8 @@ public class ClientPlayerEntity extends AbstractClientPlayerEntity {
 
         if (this.world.isBlockLoaded(new BlockPos(this.getPosX(), 0.0D, this.getPosZ()))) {
             super.tick();
-            boolean sentPlayerInput = PacketFixFor1_21Plus.sendPlayerInputPacket(this);
+            boolean sentPlayerInput = CPlayerInputPacket.sendPlayerInput(this);
+            SneakMovementDebug.capturePlayerInput(this, sentPlayerInput);
 
             if (this.isPassenger()) {
                 this.connection.sendPacket(new CPlayerPacket.RotationPacket(this.rotationYaw, this.rotationPitch, this.onGround));
@@ -250,6 +328,8 @@ public class ClientPlayerEntity extends AbstractClientPlayerEntity {
             } else {
                 this.onUpdateWalkingPlayer();
             }
+
+            SneakMovementDebug.logTick(this);
 
             for (IAmbientSoundHandler iambientsoundhandler : this.ambientSoundHandlers) {
                 iambientsoundhandler.tick();
@@ -301,6 +381,10 @@ public class ClientPlayerEntity extends AbstractClientPlayerEntity {
             onGround = event.isOnGround();
         }
 
+        this.serverRotationYaw = yaw;
+        this.serverRotationPitch = pitch;
+        this.serverRotationInitialized = true;
+
         this.sendSprintingPacket();
 
         this.sendSneakingPacket();
@@ -314,6 +398,7 @@ public class ClientPlayerEntity extends AbstractClientPlayerEntity {
             // as a burst (Grim Timer / TimerLimit); the next non-backlogged
             // tick sends a fresh position instead.
             this.positionUpdateTicks = 0;
+            SneakMovementDebug.captureMovementPacketType("suppressed");
         } else if (this.isCurrentViewEntity()) {
             double deltaX = x - this.lastReportedPosX;
             double deltaY = y - this.lastReportedPosY;
@@ -335,20 +420,42 @@ public class ClientPlayerEntity extends AbstractClientPlayerEntity {
             boolean rotMoved = deltaYaw != 0.0D || deltaPitch != 0.0D;
             boolean horizontalCollisionChanged = PacketFixFor1_21Plus.shouldUseMovementFlags()
                     && this.prevHorizontalCollision != horizontalCollision;
+            boolean sentRotation = false;
 
             if (this.isPassenger()) {
                 Vector3d vector3d = this.getMotion();
                 this.connection.sendPacket(
                         new CPlayerPacket.PositionRotationPacket(vector3d.x, -999.0, vector3d.z, yaw, pitch, onGround));
+                sentRotation = true;
                 posMoved = false;
             } else if (posMoved && rotMoved) {
                 this.connection.sendPacket(new CPlayerPacket.PositionRotationPacket(x, y, z, yaw, pitch, onGround));
+                sentRotation = true;
             } else if (posMoved) {
                 this.connection.sendPacket(new CPlayerPacket.PositionPacket(x, y, z, onGround));
             } else if (rotMoved) {
                 this.connection.sendPacket(new CPlayerPacket.RotationPacket(yaw, pitch, onGround));
+                sentRotation = true;
             } else if (this.prevOnGround != onGround || horizontalCollisionChanged || isLegacy) {
                 this.connection.sendPacket(new CPlayerPacket(onGround));
+            }
+
+            String packetType = this.isPassenger() ? "position-rotation(vehicle)"
+                    : posMoved && rotMoved ? "position-rotation"
+                    : posMoved ? "position"
+                    : rotMoved ? "rotation"
+                    : this.prevOnGround != onGround || horizontalCollisionChanged || isLegacy ? "status-only"
+                    : "none";
+            SneakMovementDebug.captureMovementPacketType(packetType);
+
+            if (sentRotation) {
+                com.mentalfrostbyte.jello.util.game.network.UseItemRotationDebug.logMovementPacket(
+                        this, "rotation-carrying", yaw, pitch, true);
+            } else {
+                String type = posMoved ? "position-only"
+                        : (this.prevOnGround != onGround || horizontalCollisionChanged || isLegacy ? "status-only" : "none");
+                com.mentalfrostbyte.jello.util.game.network.UseItemRotationDebug.logMovementPacket(
+                        this, type, yaw, pitch, false);
             }
 
             if (!vanillaMovement) {
@@ -383,7 +490,13 @@ public class ClientPlayerEntity extends AbstractClientPlayerEntity {
     }
 
     private void sendSneakingPacket() {
-        boolean flag3 = PacketFixFor1_21Plus.reportedSneaking(this);
+        // Vanilla (all target eras) reports the raw shift key: 1.16.4
+        // sendSneakingPacket uses isSneaking(), 1.21.x sendShiftKeyState uses
+        // input.keyPresses.shift(). Both stay true while airborne; the old
+        // onGround/flight-only gate dropped the shift action mid-air and made
+        // Grim predict unslowed air movement against the client's 0.3 sneak
+        // slowdown (Simulation on any direction key).
+        boolean flag3 = this.isSneaking();
 
         if (flag3 != this.clientSneakState) {
             CEntityActionPacket.Action centityactionpacket$action1 = flag3 ? CEntityActionPacket.Action.PRESS_SHIFT_KEY
@@ -818,6 +931,7 @@ public class ClientPlayerEntity extends AbstractClientPlayerEntity {
                 ? this.isSneaking() && !this.isSleeping()
                 : !this.abilities.isFlying && !this.isSwimming() && this.isPoseClear(Pose.CROUCHING)
                         && (this.isSneaking() || !this.isSleeping() && !this.isPoseClear(Pose.STANDING));
+        SneakMovementDebug.beginTick(this);
         this.movementInput.tickMovement(this.isForcedDown());
 
         // 1.9 - 1.14.4 undoes the sneak slowdown while flying
@@ -852,6 +966,8 @@ public class ClientPlayerEntity extends AbstractClientPlayerEntity {
                 }
             }
         }
+        SneakMovementDebug.captureItemUseInput(
+                this.movementInput.moveForward, this.movementInput.moveStrafe);
 
         boolean flag3 = false;
 
@@ -1067,7 +1183,9 @@ public class ClientPlayerEntity extends AbstractClientPlayerEntity {
             this.horseJumpPower = 0.0F;
         }
 
+        SneakMovementDebug.captureBeforeLiving(this);
         super.livingTick();
+        SneakMovementDebug.captureAfterLiving(this, this.getOffGroundSpeed());
 
         if (this.onGround && this.abilities.isFlying && !this.mc.playerController.isSpectatorMode()) {
             this.abilities.isFlying = false;
