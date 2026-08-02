@@ -396,6 +396,7 @@ public class ClientPlayNetHandler implements IClientPlayNetHandler {
      */
     public void cleanup() {
         ExtendedChunkDataStore.clearAll();
+        com.mentalfrostbyte.jello.util.game.world.ExtendedBlockUpdateStore.clearAll();
         this.world = null;
     }
 
@@ -412,6 +413,7 @@ public class ClientPlayNetHandler implements IClientPlayNetHandler {
         PacketThreadUtil.checkThreadAndEnqueue(packetIn, this, this.client);
         CPlayerInputPacket.resetPlayerInputState();
         ExtendedChunkDataStore.clearAll();
+        com.mentalfrostbyte.jello.util.game.world.ExtendedBlockUpdateStore.clearAll();
         com.mentalfrostbyte.jello.util.game.world.ExtendedBlockStateMapper.warmupAsync();
         this.client.playerController = new PlayerController(this.client, this);
 
@@ -921,6 +923,8 @@ public class ClientPlayNetHandler implements IClientPlayNetHandler {
     public void handleBlockChange(SChangeBlockPacket packetIn) {
         PacketThreadUtil.checkThreadAndEnqueue(packetIn, this, this.client);
         this.world.invalidateRegionAndSetBlock(packetIn.getPos(), packetIn.getState());
+        com.mentalfrostbyte.jello.util.game.world.ExtendedBlockUpdateProbe.afterBlockChange(this.world,
+                packetIn.getPos(), packetIn.getState());
     }
 
     /**

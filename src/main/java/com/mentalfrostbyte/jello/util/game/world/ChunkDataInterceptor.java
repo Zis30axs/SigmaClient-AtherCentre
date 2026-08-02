@@ -46,6 +46,36 @@ public class ChunkDataInterceptor extends ChannelInboundHandlerAdapter {
                         ExtendedChunkDataStore.put(data);
                         logCapturedLight(packetId, data);
                     }
+                } else if (WorldHeightHelper.isRawBlockUpdatePacket(packetId)) {
+                    long pos = buf.readLong();
+                    int y = WorldHeightHelper.blockPosY(pos);
+                    if (!WorldHeightHelper.isTranslatedBlockYInBounds(y)) {
+                        int stateId = readVarInt(buf);
+                        int x = WorldHeightHelper.blockPosX(pos);
+                        int z = WorldHeightHelper.blockPosZ(pos);
+                        ExtendedBlockUpdateStore.putSingle(x, y, z, stateId);
+                        logCapturedBlockUpdate(packetId, x, y, z, stateId);
+                    }
+                } else if (WorldHeightHelper.isRawSectionBlocksUpdatePacket(packetId)) {
+                    long sectionPos = buf.readLong();
+                    int sectionY = WorldHeightHelper.sectionPosY(sectionPos);
+                    if (!WorldHeightHelper.isTranslatedSectionInBounds(sectionY)) {
+                        byte[] payload = new byte[buf.readableBytes()];
+                        buf.readBytes(payload);
+                        ExtendedBlockUpdateStore.putMulti(sectionPos, payload);
+                        logCapturedSectionBlocksUpdate(packetId, sectionPos, sectionY, payload.length);
+                    }
+                } else if (WorldHeightHelper.isRawBlockDestructionPacket(packetId)) {
+                    int entityId = readVarInt(buf);
+                    long pos = buf.readLong();
+                    int y = WorldHeightHelper.blockPosY(pos);
+                    if (!WorldHeightHelper.isTranslatedBlockYInBounds(y)) {
+                        int stage = buf.readUnsignedByte();
+                        int x = WorldHeightHelper.blockPosX(pos);
+                        int z = WorldHeightHelper.blockPosZ(pos);
+                        ExtendedBlockUpdateStore.putDestruction(entityId, x, y, z, stage);
+                        logCapturedBlockDestruction(packetId, entityId, x, y, z, stage);
+                    }
                 }
             } catch (Exception e) {
                 if (isDebugEnabled()) {
@@ -64,6 +94,7 @@ public class ChunkDataInterceptor extends ChannelInboundHandlerAdapter {
 
     public static void clearAll() {
         ExtendedChunkDataStore.clearAll();
+        ExtendedBlockUpdateStore.clearAll();
     }
 
     public static boolean isDebugEnabled() {
@@ -86,6 +117,27 @@ public class ChunkDataInterceptor extends ChannelInboundHandlerAdapter {
             LOGGER.info("[ExtendedHeightProbe] RAW_LIGHT_CAPTURED packetId={} target={} chunk=({}, {}) lightSections={}",
                     packetId, WorldHeightHelper.getTargetVersionSafe(), data.getChunkX(), data.getChunkZ(),
                     data.getLightPayloadCount());
+        }
+    }
+
+    private static void logCapturedBlockUpdate(int packetId, int x, int y, int z, int stateId) {
+        if (isDebugEnabled()) {
+            LOGGER.info("[ExtendedHeightProbe] RAW_BLOCK_UPDATE_CAPTURED packetId={} target={} pos=({},{},{}) stateId={}",
+                    packetId, WorldHeightHelper.getTargetVersionSafe(), x, y, z, stateId);
+        }
+    }
+
+    private static void logCapturedSectionBlocksUpdate(int packetId, long sectionPos, int sectionY, int payloadBytes) {
+        if (isDebugEnabled()) {
+            LOGGER.info("[ExtendedHeightProbe] RAW_SECTION_BLOCKS_UPDATE_CAPTURED packetId={} target={} sectionPos={} sectionY={} payloadBytes={}",
+                    packetId, WorldHeightHelper.getTargetVersionSafe(), sectionPos, sectionY, payloadBytes);
+        }
+    }
+
+    private static void logCapturedBlockDestruction(int packetId, int entityId, int x, int y, int z, int stage) {
+        if (isDebugEnabled()) {
+            LOGGER.info("[ExtendedHeightProbe] RAW_BLOCK_DESTRUCTION_CAPTURED packetId={} target={} entityId={} pos=({},{},{}) stage={}",
+                    packetId, WorldHeightHelper.getTargetVersionSafe(), entityId, x, y, z, stage);
         }
     }
 

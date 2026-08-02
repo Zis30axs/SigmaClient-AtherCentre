@@ -51,6 +51,195 @@ public class WorldHeightHelper {
     }
 
     /**
+     * Raw BLOCK_UPDATE (single block change) packet ordinal per target version.
+     * ViaBackwards 1.17 -> 1.16.4 cancels BLOCK_UPDATE when y < 0 or y > 255,
+     * so the raw packet must be captured before the Via pipeline and re-injected
+     * as a 1.16.4 packet when the client's extended-height world can apply it.
+     */
+    public static int getRawBlockUpdatePacketId(ProtocolVersion version) {
+        if (version.newerThanOrEqualTo(ProtocolVersion.v1_21_5)) {
+            return 8;
+        }
+
+        if (version.newerThanOrEqualTo(ProtocolVersion.v1_21_2)) {
+            return 9;
+        }
+
+        if (version.newerThanOrEqualTo(ProtocolVersion.v1_20_5)) {
+            return 9;
+        }
+
+        if (version.newerThanOrEqualTo(ProtocolVersion.v1_20_3)) {
+            return 9;
+        }
+
+        if (version.newerThanOrEqualTo(ProtocolVersion.v1_20_2)) {
+            return 9;
+        }
+
+        if (version.newerThanOrEqualTo(ProtocolVersion.v1_19_4)) {
+            return 10;
+        }
+
+        if (version.newerThanOrEqualTo(ProtocolVersion.v1_19_1)) {
+            return 9;
+        }
+
+        if (version.newerThanOrEqualTo(ProtocolVersion.v1_19)) {
+            return 9;
+        }
+
+        return 12;
+    }
+
+    /**
+     * Raw SECTION_BLOCKS_UPDATE (multi block change) packet ordinal per target
+     * version. ViaBackwards 1.17 -> 1.16.4 cancels the whole packet when the
+     * section Y is outside 0..15.
+     */
+    public static int getRawSectionBlocksUpdatePacketId(ProtocolVersion version) {
+        if (version.newerThanOrEqualTo(ProtocolVersion.v1_21_9)) {
+            return 82;
+        }
+
+        if (version.newerThanOrEqualTo(ProtocolVersion.v1_21_5)) {
+            return 77;
+        }
+
+        if (version.newerThanOrEqualTo(ProtocolVersion.v1_21_2)) {
+            return 78;
+        }
+
+        if (version.newerThanOrEqualTo(ProtocolVersion.v1_20_5)) {
+            return 73;
+        }
+
+        if (version.newerThanOrEqualTo(ProtocolVersion.v1_20_3)) {
+            return 71;
+        }
+
+        if (version.newerThanOrEqualTo(ProtocolVersion.v1_20_2)) {
+            return 69;
+        }
+
+        if (version.newerThanOrEqualTo(ProtocolVersion.v1_19_4)) {
+            return 67;
+        }
+
+        if (version.newerThanOrEqualTo(ProtocolVersion.v1_19_3)) {
+            return 63;
+        }
+
+        if (version.newerThanOrEqualTo(ProtocolVersion.v1_19_1)) {
+            return 64;
+        }
+
+        if (version.newerThanOrEqualTo(ProtocolVersion.v1_19)) {
+            return 61;
+        }
+
+        return 63;
+    }
+
+    /**
+     * Raw BLOCK_DESTRUCTION (block break animation) packet ordinal per target
+     * version. ViaBackwards 1.17 -> 1.16.4 cancels it when y < 0 or y > 255.
+     */
+    public static int getRawBlockDestructionPacketId(ProtocolVersion version) {
+        if (version.newerThanOrEqualTo(ProtocolVersion.v1_21_5)) {
+            return 5;
+        }
+
+        if (version.newerThanOrEqualTo(ProtocolVersion.v1_21_2)) {
+            return 6;
+        }
+
+        if (version.newerThanOrEqualTo(ProtocolVersion.v1_20_5)) {
+            return 6;
+        }
+
+        if (version.newerThanOrEqualTo(ProtocolVersion.v1_20_3)) {
+            return 6;
+        }
+
+        if (version.newerThanOrEqualTo(ProtocolVersion.v1_20_2)) {
+            return 6;
+        }
+
+        if (version.newerThanOrEqualTo(ProtocolVersion.v1_19_4)) {
+            return 7;
+        }
+
+        if (version.newerThanOrEqualTo(ProtocolVersion.v1_19_1)) {
+            return 6;
+        }
+
+        if (version.newerThanOrEqualTo(ProtocolVersion.v1_19)) {
+            return 6;
+        }
+
+        return 9;
+    }
+
+    public static boolean isRawBlockUpdatePacket(int packetId) {
+        return isExtendedHeight() && packetId == getRawBlockUpdatePacketId(getTargetVersionSafe());
+    }
+
+    /**
+     * Whether the raw SECTION_BLOCKS_UPDATE payload still carries the
+     * suppress-light-updates boolean between the section-position long and the
+     * record count. Present since 1.16.2, removed again in 1.20; 1.16.4 always
+     * expects it, so the re-injection has to add it back for newer targets.
+     *
+     * <p>Only the preferred layout - the re-injector falls back to the other
+     * one when this layout does not consume the captured payload exactly.
+     */
+    public static boolean hasSectionBlocksUpdateSuppressLight(ProtocolVersion version) {
+        return version.olderThan(ProtocolVersion.v1_20);
+    }
+
+    public static boolean isRawSectionBlocksUpdatePacket(int packetId) {
+        return isExtendedHeight() && packetId == getRawSectionBlocksUpdatePacketId(getTargetVersionSafe());
+    }
+
+    public static boolean isRawBlockDestructionPacket(int packetId) {
+        return isExtendedHeight() && packetId == getRawBlockDestructionPacketId(getTargetVersionSafe());
+    }
+
+    /**
+     * The Y range ViaBackwards 1.17 -> 1.16.4 still forwards. Block changes
+     * outside this range are cancelled by the downgrade and must be captured
+     * raw and re-injected.
+     */
+    public static boolean isTranslatedBlockYInBounds(int y) {
+        return y >= 0 && y <= 255;
+    }
+
+    /** Decode X from a 1.14+ packed block position long. */
+    public static int blockPosX(long pos) {
+        return (int) (pos >> 38);
+    }
+
+    /** Decode Y from a 1.14+ packed block position long (12-bit, sign-extended). */
+    public static int blockPosY(long pos) {
+        return (int) (pos << 52 >> 52);
+    }
+
+    /** Decode Z from a 1.14+ packed block position long. */
+    public static int blockPosZ(long pos) {
+        return (int) (pos << 26 >> 38);
+    }
+
+    /**
+     * Decode the section Y from a packed section position long
+     * (x << 42 | z << 20 | y, y in the low 20 bits) used by 1.17+ and by the
+     * 1.16.4 {@code SectionPos}.
+     */
+    public static int sectionPosY(long sectionPos) {
+        return (int) (sectionPos << 44 >> 44);
+    }
+
+    /**
      * Raw LEVEL_CHUNK_WITH_LIGHT packet ordinal per target version. Values come
      * from ViaVersion 5.9.1's ClientboundPackets1_*.LEVEL_CHUNK_WITH_LIGHT enum
      * ordinals and were verified by reflection at implementation time.
