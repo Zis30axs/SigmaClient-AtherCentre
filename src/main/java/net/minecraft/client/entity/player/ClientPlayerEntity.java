@@ -113,6 +113,22 @@ public class ClientPlayerEntity extends AbstractClientPlayerEntity {
     private boolean serverRotationInitialized;
     private boolean prevOnGround;
     private boolean prevHorizontalCollision;
+
+    /**
+     * 1.8.x RotationPlace consistency state. The 1.8.9 block-placement packet
+     * (C08 via CPlayerTryUseItemOnBlockPacket) carries no yaw/pitch, so Grim
+     * derives the placement look direction from the C03 flying packet that
+     * follows it. Silent-rotation modules change the EventMotion yaw/pitch
+     * after {@code Minecraft.runTick} computed the placement ray trace, which
+     * makes that C03 disagree with the placement's hit vector. When a
+     * placement is recorded this tick, the movement packet is forced back to
+     * the rotation that actually produced the placement (reconstructed from
+     * the eye position and the hit point), matching vanilla 1.8.9 where the
+     * C03 always carries the look direction used for the placement.
+     */
+    private boolean hasPendingPlacementRotation;
+    private float pendingPlacementYaw;
+    private float pendingPlacementPitch;
     private boolean isCrouching;
     private boolean clientSneakState;
 
@@ -306,6 +322,45 @@ public class ClientPlayerEntity extends AbstractClientPlayerEntity {
     }
 
     /**
+     * Records the look rotation implied by a 1.8.x block-placement hit vector.
+     * Called from {@code PlayerController.sendUseItemOnBlockPacket} at the
+     * moment the placement packet is created, using the same eye position the
+     * client-side ray trace used. The rotation is reconstructed from
+     * eye -> hit point, so it is the rotation the placement actually used
+     * whether the hit came from the vanilla crosshair ray or a module's
+     * silent-rotation ray.
+     */
+    public void recordBlockPlacementRotation(Vector3d hitPoint) {
+        if (hitPoint == null) {
+            return;
+        }
+
+        Vector3d eye = this.getEyePosition(1.0F);
+        double dx = hitPoint.x - eye.x;
+        double dy = hitPoint.y - eye.y;
+        double dz = hitPoint.z - eye.z;
+        if (dx == 0.0D && dy == 0.0D && dz == 0.0D) {
+            return;
+        }
+
+        this.pendingPlacementYaw = MathHelper.wrapDegrees(
+                (float) (Math.toDegrees(Math.atan2(dz, dx)) - 90.0D));
+        this.pendingPlacementPitch = MathHelper.wrapDegrees(
+                (float) (-Math.toDegrees(Math.atan2(dy, Math.sqrt(dx * dx + dz * dz)))));
+        this.hasPendingPlacementRotation = true;
+    }
+
+    /** Debug-only view of the last recorded 1.8.x placement rotation. */
+    public float getPendingPlacementYaw() {
+        return this.pendingPlacementYaw;
+    }
+
+    /** Debug-only view of the last recorded 1.8.x placement rotation. */
+    public float getPendingPlacementPitch() {
+        return this.pendingPlacementPitch;
+    }
+
+    /**
      * Called to update the entity's position/logic.
      */
     public void tick() {
@@ -324,6 +379,7 @@ public class ClientPlayerEntity extends AbstractClientPlayerEntity {
             SneakMovementDebug.capturePlayerInput(this, sentPlayerInput);
 
             if (this.isPassenger()) {
+                this.connection.flushLegacyWindowClicks();
                 this.connection.sendPacket(new CPlayerPacket.RotationPacket(this.rotationYaw, this.rotationPitch, this.onGround));
                 if (!sentPlayerInput) {
                     this.connection.sendPacket(new CInputPacket(this.moveStrafing, this.moveForward, this.movementInput.jump, this.movementInput.sneaking));
@@ -376,6 +432,8 @@ public class ClientPlayerEntity extends AbstractClientPlayerEntity {
         float pitch = this.rotationPitch;
         boolean onGround = this.onGround;
         boolean horizontalCollision = this.collidedHorizontally;
+        final ProtocolVersion targetVersion = JelloPortal.getVersion();
+        final boolean isLegacy = targetVersion != null && targetVersion.equalTo(ProtocolVersion.v1_8);
 
         if (!vanillaMovement) {
             event = new EventMotion(x, y, z, yaw, pitch, onGround);
@@ -391,16 +449,34 @@ public class ClientPlayerEntity extends AbstractClientPlayerEntity {
             onGround = event.isOnGround();
         }
 
+        if (isLegacy && this.hasPendingPlacementRotation) {
+            // The 1.8.9 C08 carries no yaw/pitch; Grim checks the placement
+            // against the following C03. Silent-rotation modules may have
+            // diverged the EventMotion rotation from the ray that produced the
+            // placement, so this tick's C03 is forced back to the placement's
+            // true rotation (eye -> hit point).
+            yaw = this.pendingPlacementYaw;
+            pitch = this.pendingPlacementPitch;
+            this.hasPendingPlacementRotation = false;
+        }
+
         this.serverRotationYaw = yaw;
         this.serverRotationPitch = pitch;
         this.serverRotationInitialized = true;
+        boolean viaMovementSuppressed = com.mentalfrostbyte.jello.util.game.network.ViaNetworkDiagnostics
+                .shouldSuppressMovementPackets();
+
+        if (!viaMovementSuppressed && isLegacy && this.isCurrentViewEntity()) {
+            // 1.8.9 vanilla sends click-window packets in runTick before the
+            // world tick emits C03. Flush the deferred 1.8.x clicks here so the
+            // wire order is always click window -> C03, never C03 -> click
+            // window -> transaction.
+            this.connection.flushLegacyWindowClicks();
+        }
 
         this.sendSprintingPacket();
 
         this.sendSneakingPacket();
-
-        boolean viaMovementSuppressed = com.mentalfrostbyte.jello.util.game.network.ViaNetworkDiagnostics
-                .shouldSuppressMovementPackets();
 
         if (viaMovementSuppressed) {
             // The Netty event loop is still draining an initial-join backlog.
@@ -419,8 +495,6 @@ public class ClientPlayerEntity extends AbstractClientPlayerEntity {
 
             ++this.positionUpdateTicks;
 
-            final ProtocolVersion targetVersion = JelloPortal.getVersion();
-            final boolean isLegacy = targetVersion.equalTo(ProtocolVersion.v1_8);
             final double minimumMovement = targetVersion.newerThanOrEqualTo(ProtocolVersion.v1_18_2) ? 4.0E-8D
                     : 9.0E-4D;
             final int positionPacketInterval = PacketFixFor1_21Plus.getPositionPacketInterval(isLegacy);
@@ -457,6 +531,17 @@ public class ClientPlayerEntity extends AbstractClientPlayerEntity {
                     : this.prevOnGround != onGround || horizontalCollisionChanged || isLegacy ? "status-only"
                     : "none";
             SneakMovementDebug.captureMovementPacketType(packetType);
+            ClientPlayNetHandler.PacketOrderDebug189.logMovement(
+                    "ClientPlayerEntity.sendMovementPackets",
+                    packetType,
+                    posMoved,
+                    sentRotation,
+                    yaw, pitch, onGround,
+                    this.rotationYaw, this.rotationPitch,
+                    event == null ? yaw : event.getYaw(),
+                    event == null ? pitch : event.getPitch(),
+                    this.lastReportedYaw, this.lastReportedPitch,
+                    this.serverRotationYaw, this.serverRotationPitch);
 
             if (sentRotation) {
                 com.mentalfrostbyte.jello.util.game.network.UseItemRotationDebug.logMovementPacket(

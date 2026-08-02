@@ -1,7 +1,9 @@
 package net.minecraft.client.multiplayer;
 
+import com.mentalfrostbyte.jello.gui.base.JelloPortal;
 import com.mentalfrostbyte.jello.util.game.player.InvManagerUtil;
 import com.mojang.datafixers.util.Pair;
+import com.viaversion.viaversion.api.protocol.version.ProtocolVersion;
 import de.florianmichael.viamcp.fixes.compat.InteractionProtocol;
 import de.florianmichael.viamcp.fixes.compat.InteractionSemantics;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
@@ -444,6 +446,22 @@ public class PlayerController
     private void sendUseItemOnBlockPacket(ClientPlayerEntity player, Hand hand, BlockRayTraceResult hit)
     {
         InteractionSemantics.sendPreUseMovement(this.connection, player);
+        if (player != null && hit != null
+                && JelloPortal.getVersion() != null
+                && JelloPortal.getVersion().equalTo(ProtocolVersion.v1_8)) {
+            // 1.8.9's C08 carries no yaw/pitch; Grim derives the placement look
+            // from the following C03. Record the rotation implied by this hit
+            // vector so the same-tick movement packet can carry it.
+            player.recordBlockPlacementRotation(hit.getHitVec());
+            ClientPlayNetHandler.PacketOrderDebug189.logPlacement(
+                    "PlayerController.sendUseItemOnBlockPacket",
+                    hit.getPos().getX(), hit.getPos().getY(), hit.getPos().getZ(),
+                    hit.getFace().getIndex(),
+                    hit.getHitVec().x, hit.getHitVec().y, hit.getHitVec().z,
+                    player.inventory.currentItem,
+                    player.getPendingPlacementYaw(),
+                    player.getPendingPlacementPitch());
+        }
         this.connection.sendPacket(new CPlayerTryUseItemOnBlockPacket(hand, hit));
     }
 

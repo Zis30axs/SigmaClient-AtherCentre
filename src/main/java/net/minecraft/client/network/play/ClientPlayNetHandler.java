@@ -5,8 +5,10 @@ import com.google.common.collect.Maps;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.Sets;
 import com.mentalfrostbyte.Client;
+import com.mentalfrostbyte.jello.gui.base.JelloPortal;
 import com.mentalfrostbyte.jello.module.impl.misc.AutoReconnect;
 import com.mentalfrostbyte.jello.util.game.network.ServerConnectionErrorLogger;
+import com.mentalfrostbyte.jello.util.game.network.ViaNetworkDiagnostics;
 import com.mentalfrostbyte.jello.util.game.MinecraftUtil;
 import com.mentalfrostbyte.jello.util.game.world.ExtendedChunkData;
 import com.mentalfrostbyte.jello.util.game.world.ExtendedChunkDataStore;
@@ -24,6 +26,7 @@ import java.net.URISyntaxException;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.ArrayDeque;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Iterator;
@@ -309,6 +312,25 @@ public class ClientPlayNetHandler implements IClientPlayNetHandler {
      * connection externally
      */
     private final NetworkManager netManager;
+
+    /**
+     * 1.8.x-only FIFO for {@link CClickWindowPacket}. Vanilla 1.8.9 sends
+     * container clicks from {@code Minecraft.runTick} (GuiScreen.handleInput ->
+     * GuiContainer.mouseClicked -> PlayerControllerMP.windowClick) strictly
+     * before the world tick sends the C03 flying packet. This client is based
+     * on 1.16.4, whose GLFW mouse callbacks dispatch {@code Screen.mouseClicked}
+     * asynchronously between ticks, so a click window packet could reach the
+     * server after the current C03 and before the next one. Grim's Post check
+     * then sees flying -> click window -> transaction without an intervening
+     * flying packet and flags "click window v1.8".
+     *
+     * <p>Deferring only the C03's sibling packet (never the local slot click,
+     * which already ran in {@code PlayerController.windowClick}) restores the
+     * 1.8.9 wire order: click window, then the same tick's C03. The packet
+     * object is immutable in practice ({@link CClickWindowPacket} copies its
+     * ItemStack), so the queue only stores the packet itself.
+     */
+    private final ArrayDeque<CClickWindowPacket> legacyWindowClickQueue = new ArrayDeque<>();
     private final GameProfile profile;
 
     /**
@@ -950,7 +972,58 @@ public class ClientPlayNetHandler implements IClientPlayNetHandler {
     }
 
     public void sendPacket(IPacket<?> packetIn) {
+        if (this.isLegacyClickWindowEra() && packetIn instanceof CClickWindowPacket clickWindowPacket) {
+            this.legacyWindowClickQueue.add(clickWindowPacket);
+            PacketOrderDebug189.logClick("ClientPlayNetHandler.enqueue", clickWindowPacket);
+            return;
+        }
+
+        PacketOrderDebug189.logServerbound("ClientPlayNetHandler.sendPacket", packetIn);
         this.netManager.sendPacket(packetIn);
+    }
+
+    /**
+     * True when the Via target is protocol 47 ("1.8.x", covering 1.8.0 through
+     * 1.8.9). Only in this era does Grim's Post check flag click-window packets
+     * that arrive after a flying packet.
+     */
+    public boolean isLegacyClickWindowEra() {
+        ProtocolVersion target = JelloPortal.getVersion();
+        return target != null && target.equalTo(ProtocolVersion.v1_8);
+    }
+
+    /**
+     * Sends every queued 1.8.x click window packet immediately before the next
+     * C03 flying packet of the same client tick. Packets whose window is no
+     * longer open (window id no longer matches the player's open container)
+     * are dropped instead of being flushed after a close-window race.
+     */
+    public void flushLegacyWindowClicks() {
+        if (this.legacyWindowClickQueue.isEmpty()) {
+            return;
+        }
+
+        if (!this.isLegacyClickWindowEra()) {
+            this.legacyWindowClickQueue.clear();
+            return;
+        }
+
+        if (this.client == null || this.client.player == null || this.netManager == null
+                || !this.netManager.isChannelOpen()
+                || ViaNetworkDiagnostics.shouldSuppressMovementPackets()) {
+            return;
+        }
+
+        CClickWindowPacket packet;
+        while ((packet = this.legacyWindowClickQueue.pollFirst()) != null) {
+            if (packet.getWindowId() != this.client.player.openContainer.windowId) {
+                PacketOrderDebug189.logClick("ClientPlayNetHandler.drop-window-closed", packet);
+                continue;
+            }
+
+            PacketOrderDebug189.logClick("ClientPlayNetHandler.flush-send", packet);
+            this.netManager.sendPacket(packet);
+        }
     }
 
     public void handleCollectItem(SCollectItemPacket packetIn) {
@@ -2633,5 +2706,110 @@ public class ClientPlayNetHandler implements IClientPlayNetHandler {
 
     public DynamicRegistries func_239165_n_() {
         return this.field_239163_t_;
+    }
+
+    /**
+     * Default-off, continuous serverbound packet-order diagnostics for the
+     * 1.8.x target path. Enabled with {@code -Dsigma.debug.packetOrder189=true}.
+     *
+     * <p>Every hook formats only primitives (plus the packet's simple class
+     * name), never stores packet/entity/world references, and every log line
+     * shares one monotonically increasing sequence so the order in which
+     * packets were handed to the network stack is unambiguous. There is no
+     * rate limiting: a single tick's click + placement + movement sequence
+     * must be visible in full.
+     */
+    public static final class PacketOrderDebug189 {
+        private static final boolean ENABLED = Boolean.getBoolean("sigma.debug.packetOrder189");
+        private static final Logger LOGGER = LogManager.getLogger("PacketOrder189");
+        private static long sequence;
+
+        private PacketOrderDebug189() {
+        }
+
+        public static boolean isActive() {
+            if (!ENABLED) {
+                return false;
+            }
+
+            Minecraft mc = Minecraft.getInstance();
+            return mc != null && mc.getConnection() != null && mc.getConnection().isLegacyClickWindowEra();
+        }
+
+        private static String prefix(String source) {
+            Minecraft mc = Minecraft.getInstance();
+            int tick = mc != null && mc.player != null ? mc.player.ticksExisted : -1;
+            String target = "?";
+            ProtocolVersion version = JelloPortal.getVersion();
+            if (version != null) {
+                target = version.getName();
+            }
+            String screen = mc != null && mc.currentScreen != null
+                    ? mc.currentScreen.getClass().getSimpleName() : "null";
+            return "[PacketOrder189] seq=" + (++sequence)
+                    + " tick=" + tick
+                    + " nanos=" + System.nanoTime()
+                    + " target=" + target
+                    + " screen=" + screen
+                    + " thread=" + Thread.currentThread().getName()
+                    + " source=" + source;
+        }
+
+        public static void logServerbound(String source, IPacket<?> packet) {
+            if (!isActive() || packet == null) {
+                return;
+            }
+
+            LOGGER.info("{} packet={}", prefix(source), packet.getClass().getSimpleName());
+        }
+
+        public static void logClick(String source, CClickWindowPacket packet) {
+            if (!isActive() || packet == null) {
+                return;
+            }
+
+            LOGGER.info("{} clickWindow windowId={} slot={} button={} type={} action={}",
+                    prefix(source),
+                    packet.getWindowId(),
+                    packet.getSlotId(),
+                    packet.getUsedButton(),
+                    packet.getClickType(),
+                    packet.getActionNumber());
+        }
+
+        public static void logMovement(String source, String type, boolean hasPosition, boolean hasRotation,
+                                       float yaw, float pitch, boolean onGround,
+                                       float visualYaw, float visualPitch,
+                                       float eventYaw, float eventPitch,
+                                       float lastReportedYaw, float lastReportedPitch,
+                                       float serverRotationYaw, float serverRotationPitch) {
+            if (!isActive()) {
+                return;
+            }
+
+            LOGGER.info("{} movement type={} hasPos={} hasRot={} yaw={} pitch={} onGround={}"
+                            + " visualYaw={} visualPitch={} eventYaw={} eventPitch={}"
+                            + " lastReportedYaw={} lastReportedPitch={}"
+                            + " serverRotationYaw={} serverRotationPitch={}",
+                    prefix(source),
+                    type, hasPosition, hasRotation, yaw, pitch, onGround,
+                    visualYaw, visualPitch, eventYaw, eventPitch,
+                    lastReportedYaw, lastReportedPitch,
+                    serverRotationYaw, serverRotationPitch);
+        }
+
+        public static void logPlacement(String source, int posX, int posY, int posZ, int face,
+                                        double hitX, double hitY, double hitZ, int selectedSlot,
+                                        float placementYaw, float placementPitch) {
+            if (!isActive()) {
+                return;
+            }
+
+            LOGGER.info("{} placement pos=({},{},{}) face={} hit=({},{},{}) selectedSlot={}"
+                            + " placementYaw={} placementPitch={}",
+                    prefix(source),
+                    posX, posY, posZ, face, hitX, hitY, hitZ, selectedSlot,
+                    placementYaw, placementPitch);
+        }
     }
 }
