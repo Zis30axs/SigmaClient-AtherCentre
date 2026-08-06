@@ -7,6 +7,7 @@ import com.mentalfrostbyte.jello.event.impl.player.EventUpdateHeldItem;
 import com.mentalfrostbyte.jello.module.impl.player.OldHitting;
 import com.mojang.blaze3d.matrix.MatrixStack;
 import com.mojang.blaze3d.vertex.IVertexBuilder;
+import de.florianmichael.viamcp.fixes.compat.InteractionProtocol;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.entity.player.AbstractClientPlayerEntity;
 import net.minecraft.client.entity.player.ClientPlayerEntity;
@@ -359,6 +360,19 @@ public class FirstPersonRenderer {
                             break;
 
                         case BLOCK:
+                            if (InteractionProtocol.atOrOlderThan1_8()
+                                    && stack.getItem() instanceof SwordItem) {
+                                // A 1.8 sword is natively in active-hand use
+                                // (SwordItem#setActiveHand), so this render would
+                                // otherwise take the vanilla shield pose and never
+                                // reach OldHitting's EventHandAnimation-based 1.8
+                                // blocking animation. Fire the event here and let
+                                // the module keep its classic pose.
+                                EventBus.call(eventHandAnimation);
+                                if (eventHandAnimation.cancelled) {
+                                    break;
+                                }
+                            }
                             this.transformSideFirstPerson(matrixStackIn, handside, equippedProgress);
                             break;
 

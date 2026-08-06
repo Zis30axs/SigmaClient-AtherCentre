@@ -33,6 +33,7 @@ import de.florianmichael.vialoadingbase.platform.viaversion.VLBViaProviders;
 import de.florianmichael.vialoadingbase.platform.ViaVersionPlatformImpl;
 import de.florianmichael.vialoadingbase.platform.viaversion.VLBViaInjector;
 import de.florianmichael.vialoadingbase.util.JLoggerToLog4j;
+import net.raphimc.vialegacy.ViaLegacyPlatformImpl;
 import org.apache.logging.log4j.LogManager;
 
 import java.io.File;
@@ -51,6 +52,7 @@ public class ViaLoadingBase {
     }, protocolVersions -> protocolVersions.addAll(ViaVersionPlatformImpl.createVersionList()));
     public final static Platform PLATFORM_VIA_BACKWARDS = new Platform("ViaBackwards", () -> inClassPath("com.viaversion.viabackwards.api.ViaBackwardsPlatform"), () -> new ViaBackwardsPlatformImpl(Via.getManager().getPlatform().getDataFolder()));
     public final static Platform PLATFORM_VIA_REWIND = new Platform("ViaRewind", () -> inClassPath("com.viaversion.viarewind.api.ViaRewindPlatform"), () -> new ViaRewindPlatformImpl(Via.getManager().getPlatform().getDataFolder()));
+    public final static Platform PLATFORM_VIA_LEGACY = new Platform("ViaLegacy", () -> inClassPath("net.raphimc.vialegacy.ViaLegacyPlatformImpl"), () -> new ViaLegacyPlatformImpl());
 
     public final static List<ProtocolVersion> PROTOCOLS = new ArrayList<>();
 
@@ -183,6 +185,7 @@ public class ViaLoadingBase {
 
             platforms.add(PLATFORM_VIA_BACKWARDS);
             platforms.add(PLATFORM_VIA_REWIND);
+            platforms.add(PLATFORM_VIA_LEGACY);
         }
 
         public static ViaLoadingBaseBuilder create() {

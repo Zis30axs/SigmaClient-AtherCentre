@@ -72,6 +72,11 @@ import java.util.Map;
  */
 public class WarThunderRadar extends RenderModule {
 
+    /** Which display(s) this radar mode renders. */
+    public enum DisplayMode {
+        COMBINED, RWR, TWS
+    }
+
     // ===== 布局常量（局部坐标，面板 300 x 192，见 Radar.PANEL_W/H）=====
     private static final float TWS_X = 4.0F;
     private static final float TWS_Y = 14.0F;
@@ -81,6 +86,12 @@ public class WarThunderRadar extends RenderModule {
     private static final float RWR_CX = 210.0F;
     private static final float RWR_CY = 96.0F;
     private static final float RWR_R  = 76.0F;
+
+    /** When rendering a single display, offsets that center it in the 300 x 192 panel. */
+    private static final float TWS_ONLY_OFFSET_X = 90.0F;
+    private static final float TWS_ONLY_OFFSET_Y = 6.0F;
+    private static final float RWR_ONLY_OFFSET_X = -60.0F;
+    private static final float RWR_ONLY_OFFSET_Y = 5.0F;
 
     /** Alt+R 手动锁定框颜色（固定亮绿，不随主色变化以便区分） */
     private static final int LOCK_GREEN = 0xFF55FF55;
@@ -130,6 +141,8 @@ public class WarThunderRadar extends RenderModule {
     private final EnemyLockDetector lockDetector = new LookLineLockDetector();
     /** 敌跟踪（投掷物弹道预测）检测器（可替换实现，接口见 radar.threat.ProjectileThreatTracker） */
     private final ProjectileThreatTracker projectileTracker = new BallisticThreatTracker();
+    /** Which display(s) this instance renders. */
+    private final DisplayMode displayMode;
 
     private static class ScanState {
         float x;
@@ -154,7 +167,12 @@ public class WarThunderRadar extends RenderModule {
     }
 
     public WarThunderRadar() {
-        super(ModuleCategory.GUI, "WarThunder", "War Thunder style RWR + TWS radar");
+        this("WarThunder", "War Thunder style RWR + TWS radar", DisplayMode.COMBINED);
+    }
+
+    public WarThunderRadar(String name, String description, DisplayMode displayMode) {
+        super(ModuleCategory.GUI, name, description);
+        this.displayMode = displayMode;
     }
 
     @Override
@@ -236,8 +254,20 @@ public class WarThunderRadar extends RenderModule {
         GL11.glTranslatef(parent.getX(), parent.getY(), 0.0F);
         GL11.glScalef(userScale, userScale, 1.0F);
 
-        drawTws(twsContacts, primary, range, time, twsScan, main, dim, soft, bright, bg);
-        drawRwr(contacts, primary, range, time, main, dim, soft, bright, bg);
+        if (displayMode == DisplayMode.COMBINED) {
+            drawTws(twsContacts, primary, range, time, twsScan, main, dim, soft, bright, bg);
+            drawRwr(contacts, primary, range, time, main, dim, soft, bright, bg);
+        } else if (displayMode == DisplayMode.RWR) {
+            GL11.glPushMatrix();
+            GL11.glTranslatef(RWR_ONLY_OFFSET_X, RWR_ONLY_OFFSET_Y, 0.0F);
+            drawRwr(contacts, primary, range, time, main, dim, soft, bright, bg);
+            GL11.glPopMatrix();
+        } else {
+            GL11.glPushMatrix();
+            GL11.glTranslatef(TWS_ONLY_OFFSET_X, TWS_ONLY_OFFSET_Y, 0.0F);
+            drawTws(twsContacts, primary, range, time, twsScan, main, dim, soft, bright, bg);
+            GL11.glPopMatrix();
+        }
 
         GL11.glPopMatrix();
         rememberTwsScan(twsScan);
@@ -702,22 +732,22 @@ public class WarThunderRadar extends RenderModule {
                 float half = cr + 6.0F;
                 strokeRect(p[0] - half, p[1] - half, half * 2.0F, half * 2.0F, 2.6F, LOCK_GREEN);
             }
-            drawCentered(font12, p[0], p[1] - cr - 13.0F, c.code, col);
+            drawRwrLabel(p[0], p[1] - cr - 13.0F + font12.getHeight() / 2.0F, c.code, col);
 
             // 标签优先级：敌跟踪（含撞击倒计时）> 敌锁定 > 近敌/主威胁 LOCK
             if (c.incoming) {
                 String inc = c.impactTicks >= 0
                         ? String.format(Locale.US, "INC %.1fs", c.impactTicks / 20.0F)
                         : "INC";
-                drawCentered(font12, p[0], p[1] + cr + 2.0F, inc, LOCK_GREEN);
+                drawRwrLabel(p[0], p[1] + cr + 2.0F + font12.getHeight() / 2.0F, inc, LOCK_GREEN);
             } else if (c.aimLock) {
-                drawCentered(font12, p[0], p[1] + cr + 2.0F, "SPK", LOCK_GREEN);
+                drawRwrLabel(p[0], p[1] + cr + 2.0F + font12.getHeight() / 2.0F, "SPK", LOCK_GREEN);
             } else if (c.lock || isPrimary) {
-                drawCentered(font12, p[0], p[1] + cr + 2.0F, "LOCK", col);
+                drawRwrLabel(p[0], p[1] + cr + 2.0F + font12.getHeight() / 2.0F, "LOCK", col);
             }
             if (isPrimary) {
                 String cl = String.format(Locale.US, "%.1f CL", Math.abs(c.closingSpeed));
-                drawCentered(font12, p[0], p[1] + cr + 13.0F, cl, soft);
+                drawRwrLabel(p[0], p[1] + cr + 13.0F + font12.getHeight() / 2.0F, cl, soft);
             }
         }
 
@@ -735,6 +765,25 @@ public class WarThunderRadar extends RenderModule {
             status = "RWR ACTIVE";
         }
         drawCentered(font12, RWR_CX, RWR_CY + RWR_R + 3.0F, status, main);
+    }
+
+    /**
+     * Draw a contact label centered at (cx, cy), clamped so the text stays inside
+     * the RWR disc instead of spilling above/below the circle edge.
+     */
+    private void drawRwrLabel(float cx, float cy, String text, int color) {
+        float halfW = font12.getWidth(text) / 2.0F;
+        float halfH = font12.getHeight() / 2.0F;
+        float maxR = RWR_R - Math.max(halfW, halfH) - 2.0F;
+        float dx = cx - RWR_CX;
+        float dy = cy - RWR_CY;
+        float len = (float) Math.sqrt(dx * dx + dy * dy);
+        if (len > maxR && len > 0.0F) {
+            float k = maxR / len;
+            dx *= k;
+            dy *= k;
+        }
+        drawCentered(font12, RWR_CX + dx, RWR_CY + dy - halfH, text, color);
     }
 
     /** 威胁闪烁相位（警示牌与接触点绿框共用，保证同步）：约 65% 占空比 */

@@ -176,6 +176,12 @@
         </dependency>
 
         <dependency>
+            <groupId>net.raphimc</groupId>
+            <artifactId>ViaLegacy</artifactId>
+            <version>3.0.16</version>
+        </dependency>
+
+        <dependency>
             <groupId>org.jetbrains</groupId>
             <artifactId>annotations</artifactId>
             <version>26.0.2</version>

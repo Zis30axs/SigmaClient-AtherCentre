@@ -52,7 +52,9 @@ public class Radar extends ModuleWithModuleSettings implements Draggable {
 
     public Radar() {
         super(ModuleCategory.GUI, "Radar", "Aircraft style threat radar", "Mode",
-                new WarThunderRadar()
+                new WarThunderRadar(),
+                new WarThunderRadar("RWR", "Radar warning receiver only", WarThunderRadar.DisplayMode.RWR),
+                new WarThunderRadar("TWS", "Track while scan B-scope only", WarThunderRadar.DisplayMode.TWS)
         );
         this.registerSetting(x, y, scale, range, warningDistance, scanRate, realistic, color, background, sound, enemyLock, enemyTrack);
     }

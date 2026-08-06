@@ -25,6 +25,7 @@ import com.mentalfrostbyte.jello.util.system.math.smoothing.QuadraticEasing;
 import com.mentalfrostbyte.jello.util.system.network.ImageUtil;
 import net.minecraft.client.Minecraft;
 import net.minecraft.util.Session;
+import org.newdawn.slick.TrueTypeFont;
 import org.newdawn.slick.opengl.Texture;
 import org.newdawn.slick.util.BufferedImageUtil;
 
@@ -64,7 +65,7 @@ public class Alert extends Element {
     // dialog's option controls while an interactive login (Web login) is in flight.
     private LoadingIndicator loadingSpinner;
     private Text statusText;
-    private Text statusHint;
+    private TextBlock statusHint;
     private boolean loadingState;
     // True once the in-flight login failed and the overlay is showing the retry prompt;
     // a click inside the modal then returns to the option controls instead of closing.
@@ -75,6 +76,21 @@ public class Alert extends Element {
     private int loginGeneration;
     // Executor for the in-flight interactive login, kept so a cancel can shut it down.
     private ExecutorService activeLoginExecutor;
+    private static final TrueTypeFont[] STATUS_FONTS = {
+            ResourceRegistry.JelloLightFont20,
+            ResourceRegistry.JelloLightFont18,
+            ResourceRegistry.JelloLightFont14,
+            ResourceRegistry.JelloLightFont12
+    };
+    private static final TrueTypeFont[] HEADER_FONTS = {
+            ResourceRegistry.JelloLightFont36,
+            ResourceRegistry.JelloLightFont28,
+            ResourceRegistry.JelloLightFont25,
+            ResourceRegistry.JelloLightFont20,
+            ResourceRegistry.JelloLightFont18,
+            ResourceRegistry.JelloLightFont14,
+            ResourceRegistry.JelloLightFont12
+    };
 
     public Alert(CustomGuiScreen screen, String iconName, boolean var3, String name, AlertComponent... var5) {
         this(screen, iconName, var3, name, 240, var5);
@@ -125,6 +141,7 @@ public class Alert extends Element {
                                             ClientColors.DEEP_TEAL.getColor()),
                                     component.text,
                                     ResourceRegistry.JelloLightFont36);
+                            this.fitToWidth(header, HEADER_FONTS);
                             this.screen.addToList(header);
                             this.textRows.add(header);
                         } else if (component.componentType == ComponentType.TEXT_BLOCK) {
@@ -273,9 +290,9 @@ public class Alert extends Element {
                     }
                 }
             } else {
-                Text line = new Text(
-                        this.screen,
-                        "Item" + var17,
+                        Text line = new Text(
+                                this.screen,
+                                "Item" + var17,
                         0,
                         var18,
                         this.field21284,
@@ -283,8 +300,9 @@ public class Alert extends Element {
                         new ColorHelper(
                                 ClientColors.MID_GREY.getColor(), ClientColors.MID_GREY.getColor(),
                                 ClientColors.MID_GREY.getColor(), ClientColors.MID_GREY.getColor()),
-                        component.text,
-                        ResourceRegistry.JelloLightFont20);
+                                component.text,
+                                ResourceRegistry.JelloLightFont20);
+                this.fitToWidth(line, STATUS_FONTS);
                 this.screen.addToList(line);
                 this.textRows.add(line);
             }
@@ -337,12 +355,15 @@ public class Alert extends Element {
                         ClientColors.DEEP_TEAL.getColor(), ClientColors.DEEP_TEAL.getColor()),
                 "", ResourceRegistry.JelloLightFont20));
 
-        this.screen.addToList(this.statusHint = new Text(
-                this.screen, "loginHint", 0, centerY + 30, this.field21284, 16,
+        this.screen.addToList(this.statusHint = new TextBlock(
+                this.screen, "loginHint", 0, centerY + 30, this.field21284, 54,
                 new ColorHelper(
                         ClientColors.MID_GREY.getColor(), ClientColors.MID_GREY.getColor(),
                         ClientColors.MID_GREY.getColor(), ClientColors.MID_GREY.getColor()),
-                "", ResourceRegistry.JelloLightFont20));
+                ResourceRegistry.JelloLightFont18,
+                18));
+        this.statusHint.setWordWrap(true);
+        this.statusHint.setCentered(true);
 
         this.loadingSpinner.setSelfVisible(false);
         this.statusText.setSelfVisible(false);
@@ -385,13 +406,30 @@ public class Alert extends Element {
     /** Updates the two status lines shown during a login (centered by the Text width). */
     public void setStatus(String message, String hint) {
         if (this.statusText != null) {
-            this.statusText.setText(message != null ? message : "");
-            this.centerStatusLine(this.statusText, this.statusText.getText());
+            String text = message != null ? message : "";
+            this.statusText.setText(text);
+            this.fitToWidth(this.statusText, STATUS_FONTS);
+            this.centerStatusLine(this.statusText, text);
         }
         if (this.statusHint != null) {
-            this.statusHint.setText(hint != null ? hint : "");
-            this.centerStatusLine(this.statusHint, this.statusHint.getText());
+            this.statusHint.setContent(hint != null ? hint : "");
         }
+    }
+
+    /**
+     * Shrinks the line's font until the current text fits the modal width, so long
+     * status/header/first-line strings never spill outside the dialog.
+     */
+    private void fitToWidth(Text line, TrueTypeFont[] candidates) {
+        int maxWidth = Math.max(40, this.field21284 - 12);
+        TrueTypeFont best = candidates[0];
+        for (TrueTypeFont candidate : candidates) {
+            best = candidate;
+            if (candidate.getWidth(line.getText()) <= maxWidth) {
+                break;
+            }
+        }
+        line.setFont(best);
     }
 
     public void showLoginError(String message, String hint) {
@@ -600,6 +638,15 @@ public class Alert extends Element {
 
     @Override
     public boolean onClick(int mouseX, int mouseY, int mouseButton) {
+        // The failed-login overlay is a "click anywhere to go back" prompt, but the
+        // modal's children consume the event before the bounds check below runs.
+        // Handle it first so the "Click here..." hint itself also returns to the
+        // login-method options instead of doing nothing.
+        if (this.loadingState && this.loginErrored && this.screen.method13114(mouseX, mouseY)) {
+            this.showOptionsState();
+            return false;
+        }
+
         if (!super.onClick(mouseX, mouseY, mouseButton)) {
             int var6 = this.field21284 + 60;
             int var7 = this.field21285 + 60;

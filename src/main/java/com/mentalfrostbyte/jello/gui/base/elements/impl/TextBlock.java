@@ -26,6 +26,8 @@ public class TextBlock extends AnimatedIconPanel {
     private String content = "";
     private boolean masked;
     private boolean truncated;
+    private boolean wordWrap;
+    private boolean centered;
 
     public TextBlock(
             CustomGuiScreen screen, String id, int x, int y, int width, int height,
@@ -57,6 +59,17 @@ public class TextBlock extends AnimatedIconPanel {
         return this.truncated;
     }
 
+    /** When true, long content wraps on word boundaries instead of per character. */
+    public void setWordWrap(boolean wordWrap) {
+        this.wordWrap = wordWrap;
+        this.rewrap();
+    }
+
+    /** When true, every wrapped line is centered inside the element width. */
+    public void setCentered(boolean centered) {
+        this.centered = centered;
+    }
+
     /**
      * Splits the (optionally masked) content into lines that fit the element width,
      * keeping at most as many as fit the element height. Overflow is signalled by an
@@ -73,6 +86,14 @@ public class TextBlock extends AnimatedIconPanel {
         TrueTypeFont font = this.getFont();
         int maxWidth = this.getWidthA();
         int maxLines = Math.max(1, this.getHeightA() / this.lineHeight);
+        if (this.wordWrap) {
+            this.wrapByWords(value, font, maxWidth, maxLines);
+        } else {
+            this.wrapByCharacters(value, font, maxWidth, maxLines);
+        }
+    }
+
+    private void wrapByCharacters(String value, TrueTypeFont font, int maxWidth, int maxLines) {
         StringBuilder line = new StringBuilder();
         int lineWidth = 0;
 
@@ -92,6 +113,33 @@ public class TextBlock extends AnimatedIconPanel {
 
             line.append(c);
             lineWidth += charWidth;
+        }
+
+        if (line.length() > 0) {
+            this.lines.add(line.toString());
+        }
+    }
+
+    private void wrapByWords(String value, TrueTypeFont font, int maxWidth, int maxLines) {
+        StringBuilder line = new StringBuilder();
+
+        for (String word : value.split("\\s+")) {
+            if (word.isEmpty()) {
+                continue;
+            }
+
+            String candidate = line.length() == 0 ? word : line + " " + word;
+            if (line.length() > 0 && font.getWidth(candidate) > maxWidth) {
+                this.lines.add(line.toString());
+                line.setLength(0);
+                if (this.lines.size() >= maxLines) {
+                    this.truncated = true;
+                    this.markTruncation();
+                    return;
+                }
+            }
+
+            line.append(line.length() == 0 ? word : " " + word);
         }
 
         if (line.length() > 0) {
@@ -119,11 +167,17 @@ public class TextBlock extends AnimatedIconPanel {
                 partialTicks * RenderUtil2.getAlpha(this.textColor.getTextColor()));
 
         for (int i = 0; i < this.lines.size(); i++) {
+            String lineText = this.lines.get(i);
+            int x = this.getXA();
+            if (this.centered) {
+                x += (this.getWidthA() - this.getFont().getWidth(lineText)) / 2;
+            }
+
             RenderUtil.drawString(
                     this.getFont(),
-                    (float) this.getXA(),
+                    (float) x,
                     (float) (this.getYA() + i * this.lineHeight),
-                    this.lines.get(i),
+                    lineText,
                     color);
         }
     }
