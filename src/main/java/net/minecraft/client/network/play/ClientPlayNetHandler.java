@@ -818,9 +818,8 @@ public class ClientPlayNetHandler implements IClientPlayNetHandler {
             playerentity.lastTickPosZ = d5;
         }
 
-        if (playerentity.ticksExisted > 0 && playerentity.getRidingEntity() != null) {
-            playerentity.dismount();
-        }
+        // Vehicle passenger state is synchronized by SSetPassengersPacket.
+        // A position correction must not implicitly discard that state.
 
         playerentity.setRawPosition(d1, d3, d5);
         playerentity.prevPosX = d1;

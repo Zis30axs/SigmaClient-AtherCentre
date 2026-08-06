@@ -13,22 +13,38 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.lang.reflect.Field;
+import java.nio.charset.StandardCharsets;
 
 public class PacketDumper extends Module {
     public FileWriter packetWriter;
+    private File packetLogFile;
 
     public PacketDumper() {
         super(ModuleCategory.MISC, "Packet dumper", "Dumps packets sent to and fro from the client and server");
+        this.packetLogFile = new File(Client.getInstance().file, "latest_packets.txt");
+        this.openWriter();
+    }
 
+    private void openWriter() {
         try {
-            File packetLog = new File(Client.getInstance().file + "/latest_packets.txt");
-            if (!packetLog.exists()) {
-                packetLog.createNewFile();
+            File parent = this.packetLogFile.getParentFile();
+            if (parent != null && !parent.exists() && !parent.mkdirs()) {
+                return;
             }
-
-            this.packetWriter = new FileWriter(packetLog);
+            this.packetWriter = new FileWriter(this.packetLogFile, StandardCharsets.UTF_8);
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            this.packetWriter = null;
+        }
+    }
+
+    private void closeWriter() {
+        if (this.packetWriter != null) {
+            try {
+                this.packetWriter.flush();
+                this.packetWriter.close();
+            } catch (IOException ignored) {
+            }
+            this.packetWriter = null;
         }
     }
 
@@ -56,18 +72,22 @@ public class PacketDumper extends Module {
     }
 
     private void logPacket(IPacket packet, boolean isSent) {
+        if (this.packetWriter == null) {
+            return;
+        }
         try {
             packetWriter.write((isSent ? "-->" : "<--") + "\t" + packet.getClass().getSimpleName() + "\n");
 
             for (Field field : FieldUtils.getAllFields(packet.getClass())) {
                 try {
                     packetWriter.write("\t\t" + field.getName() + "=" + extractFieldValue(field, packet) + "\n");
-                } catch (Exception e) {
-                    throw new RuntimeException(e);
+                } catch (Exception ignored) {
+                    // Skip a single failing field and keep dumping the rest.
                 }
             }
+            packetWriter.flush();
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            // Keep the module alive; the next write attempt will surface again.
         }
     }
 
@@ -83,6 +103,16 @@ public class PacketDumper extends Module {
         if (this.isEnabled()) {
             logPacket(event.packet, false);
         }
+    }
+
+    @Override
+    public void onEnable() {
+        this.openWriter();
+    }
+
+    @Override
+    public void onDisable() {
+        this.closeWriter();
     }
 
     /*
