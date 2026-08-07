@@ -6,7 +6,6 @@ import com.mentalfrostbyte.jello.gui.impl.classic.clickgui.buttons.Image;
 import com.mentalfrostbyte.jello.gui.impl.classic.clickgui.panel.ClickGuiPanel;
 import com.mentalfrostbyte.jello.gui.impl.classic.clickgui.buttons.Exit;
 import com.mentalfrostbyte.jello.module.data.ModuleCategory;
-import com.mentalfrostbyte.jello.util.client.render.ResourceRegistry;
 import com.mentalfrostbyte.jello.util.client.render.Resources;
 import com.mentalfrostbyte.jello.util.client.render.theme.ClientColors;
 import com.mentalfrostbyte.jello.util.client.render.theme.ColorHelper;
@@ -45,7 +44,7 @@ public class CategoryHolder extends ClickGuiPanel {
               38,
               new ColorHelper(-3618616, -2500135, -2500135, ClientColors.DEEP_TEAL.getColor()),
               "IRC Chat",
-              ResourceRegistry.DefaultClientFont
+              Resources.regular20
       ));
       ircButton.onClick((var1x, var2x) -> this.openIRCChat());
       Exit var7;

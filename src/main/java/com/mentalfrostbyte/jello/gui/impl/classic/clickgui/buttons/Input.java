@@ -4,7 +4,6 @@ import com.mentalfrostbyte.jello.gui.combined.CustomGuiScreen;
 import com.mentalfrostbyte.jello.gui.impl.jello.buttons.TextField;
 import com.mentalfrostbyte.jello.util.client.render.theme.ClientColors;
 import com.mentalfrostbyte.jello.util.client.render.theme.ColorHelper;
-import com.mentalfrostbyte.jello.util.client.render.ResourceRegistry;
 import com.mentalfrostbyte.jello.util.game.render.RenderUtil2;
 import com.mentalfrostbyte.jello.util.game.render.RenderUtil;
 import org.newdawn.slick.TrueTypeFont;
@@ -19,7 +18,6 @@ public class Input extends TextField {
 
    @Override
    public void draw(float partialTicks) {
-      this.setFont(ResourceRegistry.DefaultClientFont);
       RenderUtil.drawRoundedRect(
          (float)this.xA,
          (float)this.yA,

@@ -97,10 +97,10 @@ public class Class4345 extends ScrollableContentPanel {
                                 TextField.field20741,
                                 (String) setting.getCurrentValue(),
                                 setting.getName(),
-                                ResourceRegistry.DefaultClientFont
+                                ResourceRegistry.LyricsFont
                         )
                 );
-                var24.setFont(ResourceRegistry.JelloLightFont18);
+                var24.setFont(ResourceRegistry.LyricsFont);
                 var24.addChangeListener(var1x -> setting.setCurrentValue(var1x.getText()));
                 setting.addObserver(var2x -> {
                     if (var24.getText() != ((InputSetting) setting).getCurrentValue()) {

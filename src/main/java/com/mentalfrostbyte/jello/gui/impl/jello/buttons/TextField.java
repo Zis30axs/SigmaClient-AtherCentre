@@ -65,7 +65,7 @@ public class TextField extends AnimatedIconPanel {
    }
 
    public TextField(CustomGuiScreen screen, String id, int x, int y, int width, int height, ColorHelper color, String text, String placeholder, TrueTypeFont _font) {
-      super(screen, id, x, y, width, height, color, text, false);
+      super(screen, id, x, y, width, height, color, text, _font, false);
       this.placeholder = placeholder;
       this.timer.start();
    }

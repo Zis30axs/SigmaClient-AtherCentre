@@ -24,8 +24,27 @@ public class CategoryPanel extends Element {
       if (var7.getSettingMap().size() > 0) {
          Setting var11;
          this.addToList(var11 = new Setting(this, "gear", 132, 32));
-         var11.onClick((var2x, var3x) -> ((ModuleSettingGroup)this.getParent()).method13486(var7));
+         var11.onClick((var2x, var3x) -> {
+            ModuleSettingGroup var4x = this.findModuleSettingGroup();
+            if (var4x != null) {
+               var4x.method13486(var7);
+            }
+         });
       }
+   }
+
+   /**
+    * The cards live inside a scrolling content view, so the owning group is a grandparent rather than
+    * the direct parent. Walk up until it is found instead of casting {@link #getParent()}.
+    */
+   private ModuleSettingGroup findModuleSettingGroup() {
+      for (CustomGuiScreen var4 = this.getParent(); var4 != null; var4 = var4.getParent()) {
+         if (var4 instanceof ModuleSettingGroup var5) {
+            return var5;
+         }
+      }
+
+      return null;
    }
 
    @Override

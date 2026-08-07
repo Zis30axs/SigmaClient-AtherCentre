@@ -49,6 +49,11 @@ public class AccountUI extends AnimatedIconPanel {
     @Override
     public void draw(float partialTicks) {
         this.method13225();
+        // Kick off (or reuse) the asynchronous premium check so the render thread
+        // never blocks on the Xbox/Minecraft API.
+        if (this.selectedAccount != null) {
+            Anthropic.validateAsync(this.selectedAccount);
+        }
         this.color = RenderUtil2.shiftTowardsOther(ClientColors.LIGHT_GREYISH_BLUE.getColor(), ClientColors.DEEP_TEAL.getColor(), 2.0F);
         int var4 = ((ScrollableContentPanel) this.parent.getParent()).method13513();
         int var5 = Math.max(0, this.yA - var4);
@@ -107,7 +112,9 @@ public class AccountUI extends AnimatedIconPanel {
     }
 
     public void drawAccountUsername() {
-        if (this.selectedAccount.getPassword().isEmpty()) {
+        com.mentalfrostbyte.jello.managers.util.account.microsoft.Account mcAccount = this.selectedAccount;
+        boolean premium = Anthropic.isPremiumCached(mcAccount);
+        if (this.selectedAccount.getPassword().isEmpty() && !premium) {
             RenderUtil.drawString(
                     ResourceRegistry.JelloLightFont25, (float) (this.xA + 110), (float) (this.yA + 18), this.selectedAccount.getEmail(), ClientColors.DEEP_TEAL.getColor()
             );
@@ -150,13 +157,23 @@ public class AccountUI extends AnimatedIconPanel {
                 );
             }
 
-            RenderUtil.drawString(
-                    ResourceRegistry.JelloLightFont14,
-                    (float) (this.xA + 110),
-                    (float) (this.yA + 65),
-                    "Password: " + this.selectedAccount.getPassword().replaceAll(".", Character.toString('·')),
-                    ClientColors.MID_GREY.getColor()
-            );
+            if (premium) {
+                RenderUtil.drawString(
+                        ResourceRegistry.JelloLightFont14,
+                        (float) (this.xA + 110),
+                        (float) (this.yA + 65),
+                        "Premium account",
+                        ClientColors.DEEP_TEAL.getColor()
+                );
+            } else if (!this.selectedAccount.getPassword().isEmpty()) {
+                RenderUtil.drawString(
+                        ResourceRegistry.JelloLightFont14,
+                        (float) (this.xA + 110),
+                        (float) (this.yA + 65),
+                        "Password: " + this.selectedAccount.getPassword().replaceAll(".", Character.toString('·')),
+                        ClientColors.MID_GREY.getColor()
+                );
+            }
         }
     }
 

@@ -3,6 +3,7 @@ package com.mentalfrostbyte.jello.gui.impl.classic.altmanager;
 import com.google.gson.JsonObject;
 import com.mentalfrostbyte.Client;
 import com.mentalfrostbyte.jello.gui.base.elements.impl.altmanager.Account;
+import com.mentalfrostbyte.jello.gui.base.elements.impl.altmanager.Anthropic;
 import com.mentalfrostbyte.jello.gui.combined.CustomGuiScreen;
 import com.mentalfrostbyte.jello.gui.base.elements.impl.critical.Screen;
 import com.mentalfrostbyte.jello.gui.base.elements.impl.VerticalScrollBar;
@@ -78,6 +79,8 @@ public class ClassicAltScreen extends Screen {
     }
 
     private void method13395(com.mentalfrostbyte.jello.managers.util.account.microsoft.Account var1) {
+        // Kick off the asynchronous premium check as soon as a row is created.
+        Anthropic.validateAsync(var1);
         int var4 = 52;
         Account var5;
         this.altList
@@ -126,7 +129,8 @@ public class ClassicAltScreen extends Screen {
             if (!this.accountManager.login(var1)) {
                 this.status = "§cLogin Failed!";
             } else {
-                this.status = "§aLogged in. (" + var1.getName() + (!var1.isEmailAValidEmailFormat() ? "" : " - offline name") + ")";
+                boolean premium = Anthropic.isPremiumCached(var1);
+                this.status = "§aLogged in. (" + var1.getName() + (!premium ? " - offline name" : "") + ")";
             }
         }).start();
     }

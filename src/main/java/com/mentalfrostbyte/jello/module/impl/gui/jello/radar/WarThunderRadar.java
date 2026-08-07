@@ -706,7 +706,9 @@ public class WarThunderRadar extends RenderModule {
             float[] p = rwrContactPos(primary, range);
             dashedLine(RWR_CX, RWR_CY, p[0], p[1], 5.0F, 3.2F, time * 0.05F, 1.8F, bright);
             float pulse = 2.5F + MathHelper.sin(time * 0.009F) * 1.5F;
-            circle(p[0], p[1], 10.5F + pulse, 1.6F, bright);
+            float codeHalfW = font12.getWidth(primary.code) / 2.0F;
+            float primaryCr = Math.max(6.5F, codeHalfW + 3.0F);
+            circle(p[0], p[1], Math.max(10.5F + pulse, primaryCr + 3.0F), 1.6F, bright);
         }
 
         // 目标
@@ -718,10 +720,14 @@ public class WarThunderRadar extends RenderModule {
             if (c.lock && !c.marked && !c.aimLock && !c.incoming && MathHelper.sin(time * 0.018F) <= -0.45F) continue;
 
             float[] p = rwrContactPos(c, range);
-            float cr = isPrimary ? 6.5F : 4.5F;
+            float codeHalfW = font12.getWidth(c.code) / 2.0F;
+            float codeHalfH = font12.getHeight() / 2.0F;
+            float cr = Math.max(isPrimary ? 6.5F : 4.5F, Math.max(codeHalfW, codeHalfH) + 3.0F);
             int col = isPrimary ? bright : main;
 
             circle(p[0], p[1], cr, isPrimary ? 2.0F : 1.4F, col);
+            // 类型代码（PLR / SNB / ARR ...）居中写在接触点圆圈内部
+            drawCentered(font12, p[0], p[1] - codeHalfH, c.code, col);
             // 敌锁定/敌跟踪威胁：闪烁绿框包裹（与警示牌同步闪烁）
             if ((c.aimLock || c.incoming) && isThreatBlinkOn(time)) {
                 float thHalf = cr + 3.5F;
@@ -732,7 +738,6 @@ public class WarThunderRadar extends RenderModule {
                 float half = cr + 6.0F;
                 strokeRect(p[0] - half, p[1] - half, half * 2.0F, half * 2.0F, 2.6F, LOCK_GREEN);
             }
-            drawRwrLabel(p[0], p[1] - cr - 13.0F + font12.getHeight() / 2.0F, c.code, col);
 
             // 标签优先级：敌跟踪（含撞击倒计时）> 敌锁定 > 近敌/主威胁 LOCK
             if (c.incoming) {

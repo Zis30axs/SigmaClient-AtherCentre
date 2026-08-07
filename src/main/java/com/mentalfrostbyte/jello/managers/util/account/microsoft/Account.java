@@ -52,6 +52,16 @@ public class Account {
     // re-mint the short-lived Minecraft access token once it expires.
     private String refreshToken = "";
 
+    /**
+     * Cached premium-account validation result.
+     * <p>
+     * {@code null} = not validated yet, {@code Boolean.TRUE} = premium (Microsoft)
+     * account, {@code Boolean.FALSE} = cracked / offline account. Populated
+     * asynchronously by {@code Anthropic#validateAsync}, so the render thread never
+     * blocks on network I/O.
+     */
+    private volatile Boolean premiumStatus = null;
+
     public Account(String email, String password, ArrayList<Ban> bans, String knownName) {
         this.email = email;
         this.password = password;
@@ -175,11 +185,12 @@ public class Account {
     }
 
     public String getPassword() {
-        return this.password;
+        return this.password != null ? this.password : "";
     }
 
     public void setPassword(String var1) {
         this.password = var1;
+        this.premiumStatus = null;
     }
 
     public String getToken() {
@@ -188,6 +199,7 @@ public class Account {
 
     public void setToken(String token) {
         this.token = token != null ? token : "";
+        this.premiumStatus = null;
     }
 
     public String getRefreshToken() {
@@ -196,6 +208,14 @@ public class Account {
 
     public void setRefreshToken(String refreshToken) {
         this.refreshToken = refreshToken != null ? refreshToken : "";
+    }
+
+    public Boolean getPremiumStatus() {
+        return this.premiumStatus;
+    }
+
+    public void setPremiumStatus(Boolean premiumStatus) {
+        this.premiumStatus = premiumStatus;
     }
 
     public boolean hasRefreshToken() {
@@ -417,7 +437,7 @@ public class Account {
         JsonObject obj = new JsonObject();
         obj.add("bans", this.makeBanJSONArray());
         obj.addProperty("email", this.email);
-        obj.addProperty("password", encodeBase64(this.password));
+        obj.addProperty("password", encodeBase64(this.password != null ? this.password : ""));
         obj.addProperty("token", encodeBase64(this.token));
         obj.addProperty("refreshToken", encodeBase64(this.refreshToken != null ? this.refreshToken : ""));
         obj.addProperty("knownName", this.knownName);

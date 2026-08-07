@@ -6,17 +6,39 @@ import com.mentalfrostbyte.jello.gui.impl.classic.clickgui.panel.ClickGuiPanel;
 import com.mentalfrostbyte.jello.gui.impl.classic.clickgui.buttons.Class4345;
 import com.mentalfrostbyte.jello.gui.impl.classic.clickgui.buttons.Exit;
 import com.mentalfrostbyte.jello.gui.impl.classic.clickgui.panel.CategoryPanel;
+import com.mentalfrostbyte.jello.gui.impl.jello.buttons.ScrollableContentPanel;
 import com.mentalfrostbyte.jello.module.Module;
 import com.mentalfrostbyte.jello.module.data.ModuleCategory;
 import com.mentalfrostbyte.jello.util.game.render.RenderUtil;
 import com.mentalfrostbyte.jello.util.client.render.Resources;
 
 public class ModuleSettingGroup extends ClickGuiPanel {
+   /** Grid geometry of the module cards; kept as constants so the list panel can be sized from them. */
+   private static final int COLUMNS = 3;
+   private static final int CELL_WIDTH = 170;
+   private static final int CELL_HEIGHT = 80;
+   /** Insets of the scrolling viewport inside the panel: below the title, above the description strip. */
+   private static final int LIST_X = 36;
+   private static final int LIST_Y = 62;
+   private static final int LIST_WIDTH = 536;
+   private static final int LIST_BOTTOM_INSET = 46;
+   /** Offsets of the first card inside the viewport, chosen so the grid keeps its original screen position. */
+   private static final int CELL_ORIGIN_X = 4;
+   private static final int CELL_ORIGIN_Y = 10;
+
    public Class4345 field21181;
    public int field21182 = 0;
+   private final ScrollableContentPanel moduleList;
 
    public ModuleSettingGroup(CustomGuiScreen var1, String var2, int var3, int var4, ModuleCategory[] var5) {
       super(var1, var2, var3 - 296, var4 - 346, 592, 692);
+
+      this.addToList(
+              this.moduleList = new ScrollableContentPanel(
+                      this, "moduleList", LIST_X, LIST_Y, LIST_WIDTH, this.getHeightA() - LIST_Y - LIST_BOTTOM_INSET
+              )
+      );
+      this.moduleList.setListening(false);
 
       for (Module var9 : Client.getInstance().moduleManager.getModuleMap().values()) {
          if (var9.isAvailableOnClassic()) {
@@ -41,11 +63,20 @@ public class ModuleSettingGroup extends ClickGuiPanel {
    }
 
    private void method13485(Module var1) {
-      int var4 = this.field21182 % 3;
-      int var5 = (int)Math.floor((float)this.field21182 / 3.0F);
-      int var6 = 170;
-      int var7 = 80;
-      this.addToList(new CategoryPanel(this, var1.getName(), 40 + var6 * var4, 72 + var7 * var5, var6, var7, var1));
+      int var4 = this.field21182 % COLUMNS;
+      int var5 = this.field21182 / COLUMNS;
+      this.moduleList
+              .addToList(
+                      new CategoryPanel(
+                              this.moduleList,
+                              var1.getName(),
+                              CELL_ORIGIN_X + CELL_WIDTH * var4,
+                              CELL_ORIGIN_Y + CELL_HEIGHT * var5,
+                              CELL_WIDTH,
+                              CELL_HEIGHT,
+                              var1
+                      )
+              );
       this.field21182++;
    }
 
@@ -61,8 +92,11 @@ public class ModuleSettingGroup extends ClickGuiPanel {
    @Override
    public void draw(float partialTicks) {
       super.draw(partialTicks);
-      if (this.field21181 == null) {
-         for (CustomGuiScreen var5 : this.getChildren()) {
+      // The hovered card's description is drawn by the panel, not the card, so it stays outside the
+      // scrolling viewport. Require the cursor to be inside that viewport as well, otherwise a card
+      // clipped away by the scissor would still claim the strip.
+      if (this.field21181 == null && this.moduleList.method13114(this.getHeightO(), this.getWidthO())) {
+         for (CustomGuiScreen var5 : this.moduleList.getButton().getChildren()) {
             if (var5 instanceof CategoryPanel var6 && this.field21149.calcPercent() == 1.0F && var5.method13114(this.getHeightO(), this.getWidthO())) {
 				RenderUtil.drawString(Resources.regular17, 20.0F, (float)(this.getHeightA() - 26), var6.module.getDescription(), -14540254);
                RenderUtil.startScissor(5.0F, (float)(this.getHeightA() - 27), 12.0F, 24.0F);

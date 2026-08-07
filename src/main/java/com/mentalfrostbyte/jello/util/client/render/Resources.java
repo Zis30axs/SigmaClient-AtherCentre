@@ -211,7 +211,7 @@ public class Resources {
         public static Texture uparrow2 = Resources
                         .loadTexture("com/mentalfrostbyte/gui/resources/sigma/uglygui/uparrow2.png");
         public static Texture visuals = Resources
-                        .loadTexture("com/mentalfrostbyte/gui/resources/sigma/uglygui/visuals2.png");
+                        .loadTexture("com/mentalfrostbyte/gui/resources/sigma/uglygui/visuals.png");
         public static Texture visuals2 = Resources
                         .loadTexture("com/mentalfrostbyte/gui/resources/sigma/uglygui/visuals2.png");
         public static Texture xmark = Resources

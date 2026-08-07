@@ -125,6 +125,10 @@ public class Account extends AnimatedIconPanel {
     }
 
     public void method13584() {
+        // Kick off (or reuse) the asynchronous premium check so the render thread
+        // never blocks on the Xbox/Minecraft API.
+        Anthropic.validateAsync(this.field21249);
+
         String var3 = this.field21249.getKnownName();
         if (var3.equals("Unknown name")) {
             var3 = this.field21249.getEmail();
@@ -148,7 +152,22 @@ public class Account extends AnimatedIconPanel {
                 FontSizeAdjust.NEGATE_AND_DIVIDE_BY_2,
                 FontSizeAdjust.NEGATE_AND_DIVIDE_BY_2
         );
-        if (!this.field21249.isEmailAValidEmailFormat()) {
+        boolean premium = Anthropic.isPremiumCached(this.field21249);
+        boolean hasPassword = !this.field21249.getPassword().isEmpty();
+        if (premium) {
+            // Premium / Microsoft account: show the status tag.
+            RenderUtil.drawString(
+                    ResourceRegistry.DefaultClientFont,
+                    (float) (this.xA + this.widthA / 2),
+                    (float) (this.yA + 32),
+                    "Microsoft",
+                    ClientColors.PALE_YELLOW_GREEN.getColor(),
+                    FontSizeAdjust.NEGATE_AND_DIVIDE_BY_2,
+                    FontSizeAdjust.field14489,
+                    true
+            );
+        } else if (hasPassword) {
+            // Cracked / offline account with a password: show the masked password first.
             RenderUtil.drawString(
                     ResourceRegistry.DefaultClientFont,
                     (float) (this.xA + this.widthA / 2),
@@ -159,7 +178,18 @@ public class Account extends AnimatedIconPanel {
                     FontSizeAdjust.field14489,
                     true
             );
+            RenderUtil.drawString(
+                    ResourceRegistry.DefaultClientFont,
+                    (float) (this.xA + this.widthA / 2),
+                    (float) (this.yA + 38),
+                    "Cracked",
+                    ClientColors.PALE_YELLOW.getColor(),
+                    FontSizeAdjust.NEGATE_AND_DIVIDE_BY_2,
+                    FontSizeAdjust.field14489,
+                    true
+            );
         } else {
+            // Plain offline account (no password): just the label.
             RenderUtil.drawString(
                     ResourceRegistry.DefaultClientFont,
                     (float) (this.xA + this.widthA / 2),

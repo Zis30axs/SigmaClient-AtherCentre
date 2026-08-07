@@ -1,12 +1,14 @@
 package com.mentalfrostbyte.jello.gui.impl.classic.altmanager.submenus;
 
 import com.mentalfrostbyte.Client;
+import com.mentalfrostbyte.jello.gui.base.elements.impl.altmanager.Anthropic;
 import com.mentalfrostbyte.jello.gui.base.elements.impl.critical.Screen;
 import com.mentalfrostbyte.jello.gui.impl.classic.altmanager.ClassicAltScreen;
 import com.mentalfrostbyte.jello.gui.base.elements.impl.button.types.AltManagerButton;
 import com.mentalfrostbyte.jello.gui.impl.classic.clickgui.buttons.Input;
 import com.mentalfrostbyte.jello.managers.AccountManager;
 import com.mentalfrostbyte.jello.managers.util.account.microsoft.Account;
+import com.mentalfrostbyte.jello.util.client.network.microsoft.MicrosoftLoginUtil;
 import com.mentalfrostbyte.jello.util.client.render.theme.ClientColors;
 import com.mentalfrostbyte.jello.util.client.render.ResourceRegistry;
 import com.mentalfrostbyte.jello.util.game.render.RenderUtil2;
@@ -14,13 +16,18 @@ import com.mentalfrostbyte.jello.util.game.render.RenderUtil;
 import com.mentalfrostbyte.jello.util.client.render.Resources;
 import com.mentalfrostbyte.jello.util.client.render.FontSizeAdjust;
 import net.minecraft.client.Minecraft;
+import net.minecraft.util.Session;
 import org.lwjgl.glfw.GLFW;
+
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class AddAltScreen extends Screen {
    public Input field21116;
    public Input field21117;
    public AltManagerButton field21118;
    public AltManagerButton tokenLoginButton;
+   public AltManagerButton webLoginButton;
    public AltManagerButton field21119;
    public AltManagerButton field21120;
    public AccountManager field21121 = Client.getInstance().accountManager;
@@ -38,12 +45,15 @@ public class AddAltScreen extends Screen {
       var4 += 80;
       this.addToList(this.field21117 = new Input(this, "password", var5, var4, var3, 45, Input.field20741, "",
             "Password", ResourceRegistry.DefaultClientFont));
-      var4 += 190;
+      var4 += 50;
       this.addToList(this.field21118 = new AltManagerButton(this, "login", var5, var4, var3, 40, "Login",
             ClientColors.MID_GREY.getColor()));
       var4 += 50;
       this.addToList(this.tokenLoginButton = new AltManagerButton(this, "token_login", var5, var4, var3, 40,
             "Token Login", ClientColors.MID_GREY.getColor()));
+      var4 += 50;
+      this.addToList(this.webLoginButton = new AltManagerButton(this, "web_login", var5, var4, var3, 40,
+            "Web Login", ClientColors.MID_GREY.getColor()));
       var4 += 50;
       this.addToList(this.field21119 = new AltManagerButton(this, "back", var5, var4, var3, 40, "Back",
             ClientColors.MID_GREY.getColor()));
@@ -60,8 +70,8 @@ public class AddAltScreen extends Screen {
                this.field21122 = "§cAlt failed!";
             } else {
                this.field21121.updateAccount(var3x);
-               this.field21122 = "Alt added. (" + var3x.getEmail()
-                     + (!var3x.isEmailAValidEmailFormat() ? "" : " - offline name") + ")";
+               boolean premium = Anthropic.isPremiumCached(var3x);
+               this.field21122 = "Alt added. (" + var3x.getEmail() + (!premium ? " - offline name" : "") + ")";
             }
          }).start();
       });
@@ -81,6 +91,7 @@ public class AddAltScreen extends Screen {
             }
          }).start();
       });
+      this.webLoginButton.onClick((var1, var2) -> this.startWebLogin());
       this.field21119.onClick((var0, var1) -> Client.getInstance().guiManager.handleScreen(new ClassicAltScreen()));
       this.field21120.onClick((var1, var2) -> {
          String var5x = "";
@@ -98,6 +109,52 @@ public class AddAltScreen extends Screen {
             }
          }
       });
+   }
+
+   /**
+    * Starts the Microsoft OAuth browser login (Web login), mirroring the Jello-mode
+    * flow: opens the browser, waits for the auth-code callback, exchanges it for a
+    * Minecraft session, and persists the account (with its refresh token) so it can
+    * be silently re-logged in later.
+    */
+   private void startWebLogin() {
+      this.field21122 = "§bOpening your browser...";
+      ExecutorService executor = Executors.newSingleThreadExecutor();
+      MicrosoftLoginUtil.acquireMSAuthCodeSession(executor)
+            .thenComposeAsync(authCodeSession -> {
+               Minecraft.getInstance().execute(() -> this.field21122 = "§bAuthorization received...");
+               return MicrosoftLoginUtil.loginWithAuthCodeSession(authCodeSession, executor);
+            }, executor)
+            .thenAccept(msSession -> Minecraft.getInstance().execute(() -> {
+               Session session = msSession.session();
+               Account account = this.createAuthenticatedAccount(
+                     session.username, session.playerID, session.token, msSession.refreshToken());
+               if (!this.field21121.containsAccount(account)) {
+                  this.field21121.updateAccount(account);
+               }
+               this.field21121.saveAlts();
+               this.field21122 = "§aAlt added. (" + account.getName() + ")";
+            }))
+            .exceptionally(error -> {
+               Client.getInstance().logger.error("Microsoft web login failed", error);
+               Minecraft.getInstance().execute(() -> this.field21122 = "§cWeb login failed!");
+               return null;
+            })
+            .whenComplete((ignored, error) -> executor.shutdown());
+   }
+
+   private Account createAuthenticatedAccount(String username, String playerID, String token, String refreshToken) {
+      String safeUsername = username != null && !username.trim().isEmpty() ? username : "Unknown name";
+      String safePlayerID = playerID != null ? playerID : "";
+      Account account = new Account(safeUsername, safePlayerID, token);
+      account.setName(safeUsername);
+      if (safePlayerID != null && !safePlayerID.trim().isEmpty()) {
+         account.setUuid(Account.fixUUID(safePlayerID));
+      }
+      if (refreshToken != null && !refreshToken.trim().isEmpty()) {
+         account.setRefreshToken(refreshToken);
+      }
+      return account;
    }
 
    @Override
