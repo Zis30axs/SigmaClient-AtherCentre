@@ -446,7 +446,6 @@ public class LegacyBackTrack extends Module {
         return packet instanceof SExplosionPacket //爆炸与击退
                 || packet instanceof SEntityVelocityPacket //击退s12
                 || packet instanceof SConfirmTransactionPacket //通信包c0f
-                || packet instanceof SKeepAlivePacket
                 // SPlayerPositionLookPacket 不再进入缓存：它已在 onGlobalReceivePacket 里作为
                 // “硬同步点”单独处理（先排空既有队列，再让原版正常处理位置包并回 CConfirmTeleport）。
                 || packet instanceof SEntityPacket //实体位置包s14

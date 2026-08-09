@@ -15,12 +15,10 @@ public class AntiKnockback extends ModuleWithModuleSettings {
                 new BasicAntiKB(),
                 new AACAntiKB(),
                 new DelayAntiKB(),
-                new SpartanAntiKB(),
                 new MinemenAntiKB(),
                 new GommeAntiKB(),
-                new VulcanAntiKB(),
                 new LegitAntiKB(),
-                new HypixelAttackReduceAntiKB(),
+                new JumpResetAntiKB(),
                 new GrimAntiKB(),
                 new AttackReduceAntiKB()
         );

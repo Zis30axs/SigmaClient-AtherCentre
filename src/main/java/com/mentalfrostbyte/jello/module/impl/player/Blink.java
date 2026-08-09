@@ -47,7 +47,7 @@ public class Blink extends Module {
 
     public Blink() {
         super(ModuleCategory.PLAYER, "Blink", "Stops your packets to blink");
-        this.registerSetting(slowRelease,slowReleaseMaxTick,antiaim);
+        this.registerSetting(slowRelease,slowReleaseMaxTick);
     }
 
     @Override
@@ -75,16 +75,6 @@ public class Blink extends Module {
     @EventTarget
     public void onMotion(EventMotion event) {
         if (event.isPre()) {
-            //bug有时间就修
-            /*if (antiaim.getCurrentValue()) {
-                mc.world.getPlayers().stream().filter(entity -> {
-                    return (entity != mc.player && entity != clientPlayerEntity && !CombatUtil.arePlayersOnSameTeam(entity) && !Client.getInstance().friendManager.isFriend(entity));
-                }).forEach(player -> {
-                    while ((isAiming(player) || getDistanceToLocalPlayer(player) < 4) && !packets.isEmpty()) {
-                        releaseoneC03();
-                    }
-                });
-            }*/
             if (slowRelease.getCurrentValue()) {
                 float blinkTicks = slowReleaseMaxTick.getCurrentValue();
                 long movementCount = packets.stream().filter(p -> p instanceof CPlayerPacket).count();
@@ -171,109 +161,5 @@ public class Blink extends Module {
                 clientPlayerEntity.swingArm(((CAnimateHandPacket) packet).getHand());
             }
         }
-    }
-    private boolean isAiming(PlayerEntity player) {
-        ItemStack heldStack = player.getHeldItemMainhand();
-        if (heldStack.isEmpty()) {
-            return false;
-        }
-
-        Item heldItem = heldStack.getItem();
-        boolean isBow = false;
-        float motionFactor  = 1.5F;
-        float motionSlowdown = 0.99F;
-        float gravity;
-
-        if (heldItem instanceof BowItem) {
-            isBow = true;
-            gravity = 0.05F;
-            float power = (float) player.getItemInUseMaxCount() / 20.0F;
-            power = (power * power + power * 2.0F) / 3.0F;
-
-            if ((double) power < 0.1D) {
-                return false;
-            }
-
-            if (power > 1.0F) {
-                power = 1.0F;
-            }
-
-            motionFactor = power * 3.0F;
-        } else if (heldItem instanceof FishingRodItem) {
-            gravity        = 0.04F;
-            motionSlowdown = 0.92F;
-
-        } else if (heldItem instanceof SnowballItem
-                || heldItem instanceof EnderPearlItem
-                || heldItem instanceof EggItem) {
-            gravity = 0.03F;
-
-        } else {
-            return false;
-        }
-
-        float yaw   = player.rotationYaw;
-        float pitch = player.rotationPitch;
-
-        double pX = player.getPosX() - MathHelper.cos(yaw / 180.0F * (float) Math.PI) * 0.16F;
-        double pY = player.getPosY() + player.getEyeHeight() - 0.10000000149011612D;
-        double pZ = player.getPosZ() - MathHelper.sin(yaw / 180.0F * (float) Math.PI) * 0.16F;
-
-        double scale   = isBow ? 1.0D : 0.4D;
-        double motionX = -MathHelper.sin(yaw   / 180.0F * (float) Math.PI)
-                *  MathHelper.cos(pitch / 180.0F * (float) Math.PI) * scale;
-        double motionY = -MathHelper.sin(pitch / 180.0F * (float) Math.PI) * scale;
-        double motionZ =  MathHelper.cos(yaw   / 180.0F * (float) Math.PI)
-                *  MathHelper.cos(pitch / 180.0F * (float) Math.PI) * scale;
-
-        float len = (float) Math.sqrt(motionX * motionX + motionY * motionY + motionZ * motionZ);
-        motionX = motionX / len * motionFactor;
-        motionY = motionY / len * motionFactor;
-        motionZ = motionZ / len * motionFactor;
-
-        // this.posX/Y/Z 即 Blink 里记录的 fake player 位置，与原版逻辑一致
-        AxisAlignedBB hitBox = new AxisAlignedBB(
-                this.posX - 2, this.posY - 1, this.posZ - 2,
-                this.posX + 2, this.posY + 5, this.posZ + 2
-        );
-
-        while (pY > 0.0D) {
-            Vector3d posBefore = new Vector3d(pX, pY, pZ);
-            Vector3d posAfter  = new Vector3d(pX + motionX, pY + motionY, pZ + motionZ);
-
-            // 1.16.4 撞块检测
-            BlockRayTraceResult blockHit = mc.world.rayTraceBlocks(new RayTraceContext(
-                    posBefore, posAfter,
-                    RayTraceContext.BlockMode.COLLIDER,
-                    RayTraceContext.FluidMode.NONE,
-                    player
-            ));
-            if (blockHit.getType() != RayTraceResult.Type.MISS) {
-                break;
-            }
-
-            // 1.16.4 AABB 命中检测，clip() 返回 Optional
-            if (hitBox.rayTrace(posBefore, posAfter).isPresent()) {
-                return true;
-            }
-
-            pX += motionX;
-            pY += motionY;
-            pZ += motionZ;
-
-            Material material = mc.world.getBlockState(new BlockPos(pX, pY, pZ)).getMaterial();
-            if (material == Material.WATER) {
-                motionX *= 0.6D;
-                motionY *= 0.6D;
-                motionZ *= 0.6D;
-            } else {
-                motionX *= motionSlowdown;
-                motionY *= motionSlowdown;
-                motionZ *= motionSlowdown;
-            }
-            motionY -= gravity;
-        }
-
-        return false;
     }
 }

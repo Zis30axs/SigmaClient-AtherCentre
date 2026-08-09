@@ -1,7 +1,14 @@
 package com.mentalfrostbyte.jello.module.impl.combat.antikb;
 
 import com.mentalfrostbyte.jello.event.impl.game.network.EventReceivePacket;
+import com.mentalfrostbyte.jello.event.impl.game.world.EventLoadWorld;
 import com.mentalfrostbyte.jello.event.impl.player.EventLivingUpdate;
+import com.mentalfrostbyte.jello.event.impl.player.EventRunTicks;
+import com.mentalfrostbyte.jello.event.impl.player.EventUpdate;
+import com.mentalfrostbyte.jello.event.impl.player.action.EventPlace;
+import com.mentalfrostbyte.jello.event.impl.player.movement.EventMoveFlying;
+import com.mentalfrostbyte.jello.event.impl.player.movement.EventMoveInput;
+import com.mentalfrostbyte.jello.event.impl.player.movement.EventMovePacketAfter;
 import com.mentalfrostbyte.jello.module.Module;
 import com.mentalfrostbyte.jello.module.data.ModuleCategory;
 import com.mentalfrostbyte.jello.module.impl.combat.KillAura;
@@ -14,22 +21,31 @@ import com.viaversion.viaversion.api.protocol.version.ProtocolVersion;
 import de.florianmichael.vialoadingbase.ViaLoadingBase;
 import net.minecraft.entity.Entity;
 import net.minecraft.network.IPacket;
+import net.minecraft.network.NetworkManager;
 import net.minecraft.network.play.client.CAnimateHandPacket;
 import net.minecraft.network.play.client.CEntityActionPacket;
 import net.minecraft.network.play.client.CUseEntityPacket;
-import net.minecraft.network.play.server.SEntityVelocityPacket;
+import net.minecraft.network.play.server.*;
 import net.minecraft.util.Hand;
 import net.minecraft.util.math.EntityRayTraceResult;
 import net.minecraft.util.math.RayTraceResult;
 import team.sdhq.eventBus.annotations.EventTarget;
 
+import java.util.Objects;
+import java.util.concurrent.LinkedBlockingQueue;
+
 public class AttackReduceAntiKB extends Module {
     private final BooleanSetting usec0b = new BooleanSetting("UseC0B","UserC0BPacket Sprint", false);
     private final NumberSetting<Integer> keepattacktick = new NumberSetting<>("KeepAttackTick", "KeepAttackReduceTick", 5, 1, 10, 1);
     private final NumberSetting<Integer> oncecount = new NumberSetting<>("Once Count", "Attack once AttackCount", 1, 1, 5, 1);
-    private final BooleanSetting alink = new BooleanSetting("Alink","Alink in Attack",false);
-    private final BooleanSetting alinkinair = new BooleanSetting("Alink If Air","Alink If hurt in air,can use OnGround JumpReset together", false);
+    //攻击的时候alink
+    private final BooleanSetting alink = new BooleanSetting("Attacking Alink","Alink in Attack",false);
+    //空中被攻击先alink后释放击退
+    private final BooleanSetting alinkinair = new BooleanSetting("Alink If hurt Air","Alink If hurt in air,can use OnGround JumpReset together", false);
+
+    private final BooleanSetting autosprint = new BooleanSetting("AutoSprint" ,"LegitSprint",false);
     private final BooleanSetting onlysprint = new BooleanSetting("Only Sprint","Only Sprint", true);
+    //地面上时跳跃重置
     private final BooleanSetting ongroundjump = new BooleanSetting("Ground JumpReset","In Ground JumpReset",false);
     private final BooleanSetting raytrace = new BooleanSetting("RayTrace","Need RayTrace Attack", true);
     private final BooleanSetting debug = new BooleanSetting("Debug", "Debug", false);
@@ -38,11 +54,13 @@ public class AttackReduceAntiKB extends Module {
     private static final BooleanSetting disonuse = new BooleanSetting("Disable on use","Disable on use",true);
     public AttackReduceAntiKB() {
         super(ModuleCategory.COMBAT, "AttackReduce", "AttackReduce");
-        this.registerSetting(usec0b,keepattacktick,oncecount,onlysprint,raytrace,disonuse,debug);
+        this.registerSetting(usec0b,keepattacktick,oncecount,alink,alinkinair,autosprint,onlysprint,ongroundjump,raytrace,disonuse,debug);
     }
-
+    private final LinkedBlockingQueue<IPacket<?>> alinkpackets = new LinkedBlockingQueue<>();
     public int attackTick = 0;
     private boolean canattack = false;
+    private boolean velpacket = false;
+    private boolean playerinairalink = false;
 
     private void debugLog(String message) {
         if (debug.getCurrentValue()) {
@@ -55,19 +73,113 @@ public class AttackReduceAntiKB extends Module {
         debugLog("Disabled");
         attackTick = 0;
         canattack = false;
+        releaseAlinkPacket();
     }
 
     @EventTarget
-    public void onUpdate(EventLivingUpdate event) {
-        if ((canattack || attackTick > 0) && mc.world != null && mc.player != null) {
+    public void onUpdate(EventMovePacketAfter event) {
+        if (mc.world != null && mc.player != null && this.isEnabled()) {
+            if (playerinairalink && mc.player.onGround) {
+                playerinairalink = false;
+                releaseAlinkPacket();
+                canattack = true;
+                if (!velpacket) {
+                    velpacket = true;
+                }
+                attackTick = (int) keepattacktick.getCurrentValue().intValue();
+            }
+            if (attackTick == 0 && !alinkinair.getCurrentValue()){
+                releaseAlinkPacket();
+            }
+        }
+    }
+
+    @EventTarget
+    public void onReceivePacket(EventReceivePacket event) {
+        IPacket<?> packet = event.packet;
+        if (mc.world != null && mc.player != null && this.isEnabled()) {
+            if ((alink.getCurrentValue() && attackTick > 0) || (playerinairalink && alinkinair.getCurrentValue()) || !alinkpackets.isEmpty()) {
+                if (NeedCancelSPacket(packet)) {
+                    alinkpackets.add(event.packet);
+                    event.cancelled = true;
+                    if (packet instanceof  SPlayerPositionLookPacket) {
+                        releaseAlinkPacket();
+                    }
+                    return;
+                }
+            }
+            if (packet instanceof SEntityVelocityPacket && ((SEntityVelocityPacket) packet).getEntityID() == mc.player.getEntityId() && (((SEntityVelocityPacket) packet).motionX != 0 || ((SEntityVelocityPacket) packet).motionZ != 0)) {
+                if (alinkinair.getCurrentValue()) {
+                    if (!mc.player.onGround) {
+                        alinkpackets.add(event.packet);
+                        event.cancelled = true;
+                        playerinairalink = true;
+                        return;
+                    }
+                }
+                if (disonuse.getCurrentValue() && mc.player.isHandActive()) {
+                    canattack = false;
+                    attackTick = 0;
+                    return;
+                }
+                canattack = true;
+                if (!velpacket) {
+                    velpacket = true;
+                }
+                attackTick = (int) keepattacktick.getCurrentValue().intValue();
+                debugLog("Velocity packet received (motionX=" + ((SEntityVelocityPacket) packet).motionX + ", motionZ=" + ((SEntityVelocityPacket) packet).motionZ + "), armed attackTick=" + attackTick);
+            }
+        }
+    }
+
+    //jumpreset
+    @EventTarget
+    public void onMoveFlyingEvent(EventMoveFlying event) {
+        if (this.isEnabled() && mc.player != null && mc.world != null) {
+            if (velpacket && ongroundjump.getCurrentValue()) {
+                if (mc.player.isSprinting() && mc.player.onGround) {
+                    //必须有mc.gameSettings.keyBindJump.isKeyDown()否则和手动按会报antikb
+                    if (!mc.gameSettings.keyBindJump.isKeyDown()) {
+                        mc.player.jump();
+                    }
+                }
+                velpacket = false;
+            }
+        }
+    }
+
+    //sprint
+    @EventTarget
+    public void onMoveInputEvent(EventMoveInput event) {
+        if (this.isEnabled() && mc.player != null && mc.world != null) {
+            //autosprint spirnt
+            if (canattack && autosprint.getCurrentValue()) {
+                if (!mc.player.isSprinting()) {
+                    event.forward = 1.0f;
+                    mc.player.setSprinting(true);
+                }
+            }
+            //jumpreset sprint
+            if (velpacket && ongroundjump.getCurrentValue()) {
+                if (!mc.player.isSprinting() && mc.player.onGround) {
+                    event.forward = 1.0f;
+                    mc.player.setSprinting(true);
+                }
+            }
+        }
+    }
+
+    @EventTarget
+    public void onPlaceEvent(EventRunTicks event) {
+        if ((canattack || attackTick > 0) && mc.world != null && mc.player != null && this.isEnabled() && event.isPre()) {
             debugLog("Update: canattack=" + canattack + ", attackTick=" + attackTick);
             Entity entity = null;
-            if (KillAura.targetEntity != null && !raytrace.getCurrentValue()) {
-                entity = KillAura.targetEntity;
-            } else if (mc.objectMouseOver != null && mc.objectMouseOver.getType() == RayTraceResult.Type.ENTITY) {
+            if (mc.objectMouseOver != null && mc.objectMouseOver.getType() == RayTraceResult.Type.ENTITY) {
                 entity = ((EntityRayTraceResult)mc.objectMouseOver).getEntity();
-            } else if (!BlockUtil.rayTraceEntities(RotationCore.lastYaw,RotationCore.lastPitch,3.0f,false).isEmpty()) {
-                entity = BlockUtil.rayTraceEntities(RotationCore.lastYaw,RotationCore.lastPitch,3.0f,false).get(0);
+            } else if (!BlockUtil.rayTraceEntitiesnolastpos(RotationCore.currentYaw,RotationCore.currentPitch,3.0f,false).isEmpty()) {
+                entity = BlockUtil.rayTraceEntitiesnolastpos(RotationCore.currentYaw,RotationCore.currentPitch,3.0f,false).get(0);
+            } else if (KillAura.targetEntity != null && !raytrace.getCurrentValue()) {
+                entity = KillAura.targetEntity;
             }
             if (entity == null) {
                 debugLog("No target entity found, cancelled");
@@ -116,15 +228,37 @@ public class AttackReduceAntiKB extends Module {
         }
     }
 
-    @EventTarget
-    public void onReceivePacket(EventReceivePacket event) {
-        IPacket<?> packet = event.packet;
-        if (mc.world != null && mc.player != null) {
-            if (packet instanceof SEntityVelocityPacket && ((SEntityVelocityPacket) packet).getEntityID() == mc.player.getEntityId() && (((SEntityVelocityPacket) packet).motionX != 0 || ((SEntityVelocityPacket) packet).motionZ != 0)) {
-                canattack = true;
-                attackTick = (int) keepattacktick.getCurrentValue().intValue();
-                debugLog("Velocity packet received (motionX=" + ((SEntityVelocityPacket) packet).motionX + ", motionZ=" + ((SEntityVelocityPacket) packet).motionZ + "), armed attackTick=" + attackTick);
-            }
+    private void releaseAlinkPacket() {
+        while (!alinkpackets.isEmpty()) {
+            IPacket<?> packet = alinkpackets.poll();
+            NetworkManager.processPacket(packet, Objects.requireNonNull(mc.getConnection()).getNetworkManager().packetListener);
         }
+    }
+
+    @EventTarget
+    public void onLoadWorld(EventLoadWorld event) {
+        if (this.isEnabled()) {
+            attackTick = 0;
+            canattack = false;
+            alinkpackets.clear();
+        }
+    }
+
+    private boolean NeedCancelSPacket(IPacket<?> packet) {
+        return packet instanceof SExplosionPacket //爆炸与击退
+                || packet instanceof SEntityVelocityPacket //击退s12
+                || packet instanceof SConfirmTransactionPacket //通信包c0f
+                || packet instanceof SKeepAlivePacket
+                || packet instanceof SPlayerPositionLookPacket
+                || packet instanceof SEntityPacket //实体位置包s14
+                || packet instanceof SEntityTeleportPacket //实体tp包
+                || packet instanceof SMultiBlockChangePacket //方块
+                || packet instanceof SChangeBlockPacket //方块
+                || packet instanceof SCooldownPacket //冷却条?
+                || packet instanceof SPlayEntityEffectPacket //效果
+                || packet instanceof SEntityStatusPacket && ((SEntityStatusPacket) packet).getOpCode() != 2//实体状态 2为受伤
+                || packet instanceof SEntityMetadataPacket && ((SEntityMetadataPacket) packet).getEntityId() == Objects.requireNonNull(mc.player).getEntityId() //玩家数据包 不延迟可能报模拟
+                || packet instanceof SEntityPropertiesPacket && ((SEntityPropertiesPacket) packet).getEntityId() == Objects.requireNonNull(mc.player).getEntityId() //玩家属性包 不延迟可能报模拟
+                ;
     }
 }

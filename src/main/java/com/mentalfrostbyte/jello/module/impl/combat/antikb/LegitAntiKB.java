@@ -17,7 +17,8 @@ public class LegitAntiKB extends Module {
     @EventTarget
     @HighestPriority
     public void onReceivePackett(EventReceivePacket event) {
-        if (working) {
+        //if (working) {
+        if (this.isEnabled()) {
             if (mc.player.hurtTime != 0) {
                 mc.player.setSprinting(false);
                 KeyBinding.setKeyBindState(mc.gameSettings.keyBindSprint.keyCode, false);
@@ -36,7 +37,8 @@ public class LegitAntiKB extends Module {
 
                 attacking = false;
             }
-            working = false;
         }
+            //working = false;
+        //}
     }
 }
