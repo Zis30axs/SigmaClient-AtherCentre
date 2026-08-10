@@ -4,6 +4,8 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.mentalfrostbyte.jello.managers.util.account.microsoft.Account;
+import fr.litarvan.openauth.microsoft.MicrosoftAuthResult;
+import fr.litarvan.openauth.microsoft.MicrosoftAuthenticator;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -53,7 +55,7 @@ public final class Anthropic {
             String token = account.getToken();
 
             if (token == null || token.trim().isEmpty()) {
-                return false;
+                return isPremiumByCredentials(account);
             }
 
             token = token.trim();
@@ -221,6 +223,52 @@ public final class Anthropic {
                         minecraftToken
                 );
 
+            } catch (Exception ignored) {
+                // Token validation failed; the stored token may be expired or the
+                // account may have been added via email + password without a
+                // session token yet. Fall back to a credential login below.
+                return isPremiumByCredentials(account);
+            }
+        }
+
+        /**
+         * Validates an email + password account by performing a real Microsoft
+         * credential login - the same path used by {@code Account#login()}. This
+         * lets the AltManager recognise premium accounts that have not been logged
+         * in yet (and therefore have no stored session token) instead of showing
+         * them as cracked.
+         *
+         * @param account the account to validate
+         * @return true if the credentials belong to a real Microsoft (premium) account
+         */
+        private static boolean isPremiumByCredentials(Account account) {
+            if (account == null) {
+                return false;
+            }
+
+            String email = account.getEmail();
+            String password = account.getPassword();
+            if (email == null || email.trim().isEmpty()
+                    || password == null || password.isEmpty()) {
+                return false;
+            }
+
+            // Reuse Account's own offline-name heuristic: a 2-16 char username is
+            // a cracked/offline alt, anything else (typically a real email) is a
+            // Microsoft login.
+            if (account.isEmailAValidEmailFormat()) {
+                return false;
+            }
+
+            try {
+                MicrosoftAuthenticator authenticator =
+                        new MicrosoftAuthenticator();
+                MicrosoftAuthResult result =
+                        authenticator.loginWithCredentials(
+                                email.trim(), password);
+                return result != null
+                        && result.getProfile() != null
+                        && result.getProfile().getName() != null;
             } catch (Exception ignored) {
                 return false;
             }
@@ -465,7 +513,15 @@ public final class Anthropic {
             return false;
         }
         String token = account.getToken();
-        return token != null && !token.trim().isEmpty();
+        if (token != null && !token.trim().isEmpty()) {
+            return true;
+        }
+        // Before the asynchronous validation finishes, treat a real email +
+        // password account as likely-premium instead of jumping to "Cracked".
+        String email = account.getEmail();
+        String password = account.getPassword();
+        return email != null && email.contains("@")
+                && password != null && !password.isEmpty();
     }
 
     /**

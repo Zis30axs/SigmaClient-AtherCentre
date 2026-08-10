@@ -41,4 +41,13 @@ public class CCloseWindowPacket implements IPacket<IServerPlayNetHandler>
     {
         buf.writeByte(this.windowId);
     }
+
+    // START MODIFICATION
+
+    public int getWindowId()
+    {
+        return this.windowId;
+    }
+
+    // END MODIFICATION
 }

@@ -158,6 +158,8 @@ public class WarThunderRadar extends RenderModule {
         float relBearing;    // 相对玩家视角的方位角，0 = 正前方
         float closingSpeed;  // 径向速度（格/秒），负值 = 接近
         float crosshairAngle; // 与准星视线的夹角（度），越小越靠近准星
+        float facing;        // 实体朝向相对玩家视角的方位角（度），0 = 正前方
+        float absBearing;    // 目标绝对方位角（罗盘方向，度）
         boolean lock;        // 距离小于近敌告警距离（Warning Distance）
         boolean marked;      // Alt+R 手动锁定
         boolean aimLock;     // 敌锁定：该玩家视线正瞄准我们（EnemyLockDetector）
@@ -351,6 +353,10 @@ public class WarThunderRadar extends RenderModule {
             c.relBearing = rel;
             c.closingSpeed = radial;
             c.crosshairAngle = crosshair;
+            // 实体朝向：其 yaw 相对玩家视角的方位角（度），0 = 正前方
+            c.facing = MathHelper.wrapDegrees(e.rotationYaw - mc.player.rotationYaw);
+            // 目标绝对方位角（罗盘方向，度）
+            c.absBearing = MathHelper.wrapDegrees(targetYaw);
             // 近敌告警：距离判定。径向速度每 tick 抖动（目标瞬时停顿即翻正），
             // 不能作为告警条件，否则锁定音会被反复掐断；接近率仅用于主威胁选取与读数显示
             c.lock = dist < warningDistance;
@@ -572,6 +578,8 @@ public class WarThunderRadar extends RenderModule {
         copy.relBearing = source.relBearing;
         copy.closingSpeed = source.closingSpeed;
         copy.crosshairAngle = source.crosshairAngle;
+        copy.facing = source.facing;
+        copy.absBearing = source.absBearing;
         copy.lock = source.lock;
         copy.marked = source.marked;
         copy.aimLock = source.aimLock;
@@ -605,6 +613,26 @@ public class WarThunderRadar extends RenderModule {
         // 标题
         drawCentered(font14, TWS_X + TWS_W / 2.0F, TWS_Y - 14.0F, "TWS", main);
 
+        // ===== 边框刻度标注 =====
+        // 左右上角：正负水平扫描角度（±90°）
+        String azLeft = "-90°";
+        String azRight = "+90°";
+        RenderUtil.drawString(font12, TWS_X + 2.0F, TWS_Y - 12.0F, azLeft, soft);
+        RenderUtil.drawString(font12, TWS_X + TWS_W - font12.getWidth(azRight) - 2.0F, TWS_Y - 12.0F, azRight, soft);
+        // 右上角框外：最远探测距离
+        String maxRangeStr = String.format(Locale.US, "%.0fm", range);
+        RenderUtil.drawString(font12, TWS_X + TWS_W - font12.getWidth(maxRangeStr) - 2.0F, TWS_Y - 1.0F, maxRangeStr, main);
+        // 右下角框外：最近探测距离（一般为 0）
+        String minRangeStr = "0m";
+        RenderUtil.drawString(font12, TWS_X + TWS_W - font12.getWidth(minRangeStr) - 2.0F, TWS_Y + TWS_H - 10.0F, minRangeStr, main);
+        // 左侧：俯仰角度刻度（垂直方向，底部 0 → 顶部 range，对应距离轴）
+        for (int i = 0; i <= 5; i++) {
+            float frac = i / 5.0F;
+            float y = TWS_Y + TWS_H - 10.0F - frac * (TWS_H - 26.0F);
+            String pitchStr = String.format(Locale.US, "%.0f", range * frac);
+            RenderUtil.drawString(font12, TWS_X - font12.getWidth(pitchStr) - 3.0F, y - font12.getHeight() / 2.0F, pitchStr, dim);
+        }
+
         // 内部分格：3 条竖线 + 5 条横线
         for (int i = 1; i <= 3; i++) {
             float x = TWS_X + TWS_W * i / 4.0F;
@@ -635,8 +663,13 @@ public class WarThunderRadar extends RenderModule {
 
             int col = isPrimary ? bright : main;
 
-            // 上指箭头符号
-            lineStrip(new float[]{x - 5, y + 5, x, y - 5, x + 5, y + 5}, isPrimary ? 2.0F : 1.4F, col);
+            // 圆形图标 + 朝向游标（实体朝向方向）
+            circle(x, y, 4.5F, isPrimary ? 2.0F : 1.4F, col);
+            float cursorLen = 7.0F;
+            float facingAng = (float) Math.toRadians(c.facing);
+            float ex = x + MathHelper.sin(facingAng) * cursorLen;
+            float ey = y - MathHelper.cos(facingAng) * cursorLen;
+            line(x, y, ex, ey, 1.2F, col);
             if (isPrimary) {
                 strokeRect(x - 8.0F, y - 8.0F, 16.0F, 16.0F, 1.6F, col);
             }
@@ -648,15 +681,6 @@ public class WarThunderRadar extends RenderModule {
             if (c.marked) {
                 strokeRect(x - 11.0F, y - 11.0F, 22.0F, 22.0F, 2.6F, LOCK_GREEN);
             }
-
-            // 标签（防止超出右边界时画到左侧）
-            String distStr = String.format(Locale.US, "%.0fm", c.distance);
-            float labelX = x + 10.0F;
-            if (labelX + font12.getWidth(c.code) > TWS_X + TWS_W - 2.0F) {
-                labelX = x - 10.0F - font12.getWidth(c.code);
-            }
-            RenderUtil.drawString(font12, labelX, y - 12.0F, c.code, col);
-            RenderUtil.drawString(font12, labelX, y - 1.0F, distStr, soft);
         }
 
         // 底部读数：左 = 主威胁距离，右 = 0m
@@ -728,6 +752,12 @@ public class WarThunderRadar extends RenderModule {
             circle(p[0], p[1], cr, isPrimary ? 2.0F : 1.4F, col);
             // 类型代码（PLR / SNB / ARR ...）居中写在接触点圆圈内部
             drawCentered(font12, p[0], p[1] - codeHalfH, c.code, col);
+            // 朝向游标：从圆心向实体朝向方向延伸一条短线（FWD = 正上）
+            float facingAng = (float) Math.toRadians(c.facing);
+            float cursorLen = cr + 3.0F;
+            float fex = p[0] + MathHelper.sin(facingAng) * cursorLen;
+            float fey = p[1] - MathHelper.cos(facingAng) * cursorLen;
+            line(p[0], p[1], fex, fey, 1.2F, col);
             // 敌锁定/敌跟踪威胁：闪烁绿框包裹（与警示牌同步闪烁）
             if ((c.aimLock || c.incoming) && isThreatBlinkOn(time)) {
                 float thHalf = cr + 3.5F;
@@ -740,19 +770,26 @@ public class WarThunderRadar extends RenderModule {
             }
 
             // 标签优先级：敌跟踪（含撞击倒计时）> 敌锁定 > 近敌/主威胁 LOCK
+            float infoY = p[1] + cr + 2.0F + font12.getHeight() / 2.0F;
             if (c.incoming) {
                 String inc = c.impactTicks >= 0
                         ? String.format(Locale.US, "INC %.1fs", c.impactTicks / 20.0F)
                         : "INC";
-                drawRwrLabel(p[0], p[1] + cr + 2.0F + font12.getHeight() / 2.0F, inc, LOCK_GREEN);
+                drawRwrLabel(p[0], infoY, inc, LOCK_GREEN);
             } else if (c.aimLock) {
-                drawRwrLabel(p[0], p[1] + cr + 2.0F + font12.getHeight() / 2.0F, "SPK", LOCK_GREEN);
+                drawRwrLabel(p[0], infoY, "SPK", LOCK_GREEN);
             } else if (c.lock || isPrimary) {
-                drawRwrLabel(p[0], p[1] + cr + 2.0F + font12.getHeight() / 2.0F, "LOCK", col);
+                drawRwrLabel(p[0], infoY, "LOCK", col);
             }
+            // 距离 + 相对角度
+            String navStr = String.format(Locale.US, "%.0fm %.0f°", c.distance, c.relBearing);
+            drawRwrLabel(p[0], infoY + font12.getHeight(), navStr, soft);
+            // 绝对方位（罗盘）
+            String brgStr = String.format(Locale.US, "BRG %.0f°", c.absBearing);
+            drawRwrLabel(p[0], infoY + font12.getHeight() * 2.0F, brgStr, soft);
             if (isPrimary) {
                 String cl = String.format(Locale.US, "%.1f CL", Math.abs(c.closingSpeed));
-                drawRwrLabel(p[0], p[1] + cr + 13.0F + font12.getHeight() / 2.0F, cl, soft);
+                drawRwrLabel(p[0], infoY + font12.getHeight() * 3.0F, cl, soft);
             }
         }
 
