@@ -1,7 +1,7 @@
 package de.florianmichael.viamcp;
 
 import com.mentalfrostbyte.jello.util.game.world.ChunkDataInterceptor;
-import com.mentalfrostbyte.jello.util.game.world.ExtendedHeightBlockUpdateHandler;
+//import com.mentalfrostbyte.jello.util.game.world.ExtendedHeightBlockUpdateHandler;
 import com.mentalfrostbyte.jello.util.game.network.ServerboundPacketDebugHandler;
 import com.mentalfrostbyte.jello.util.game.network.UseItemRotationDebug;
 import com.viaversion.viaversion.api.connection.UserConnection;
@@ -23,7 +23,7 @@ public class MCPVLBPipeline extends VLBPipeline {
     public void handlerAdded(ChannelHandlerContext ctx) throws Exception {
         super.handlerAdded(ctx);
         installChunkInterceptor(ctx);
-        installExtendedHeightBlockUpdateHandler(ctx);
+        //installExtendedHeightBlockUpdateHandler(ctx);
         installMovementFlagFixHandler(ctx);
         installServerboundDebugHandler(ctx);
     }
@@ -34,7 +34,7 @@ public class MCPVLBPipeline extends VLBPipeline {
 
         if (evt instanceof CompressionReorderEvent) {
             moveChunkInterceptorAfterDecompression(ctx);
-            moveExtendedHeightBlockUpdateHandler(ctx);
+            //moveExtendedHeightBlockUpdateHandler(ctx);
             moveMovementFlagFixHandler(ctx);
             moveServerboundDebugHandler(ctx);
         }
@@ -134,7 +134,7 @@ public class MCPVLBPipeline extends VLBPipeline {
      * packets after the Via decoder translated (and ViaBackwards cancelled) the
      * originals. Must stay between via-decoder and the vanilla packet decoder.
      */
-    private void installExtendedHeightBlockUpdateHandler(ChannelHandlerContext ctx) {
+    /*private void installExtendedHeightBlockUpdateHandler(ChannelHandlerContext ctx) {
         if (ctx.pipeline().get(ExtendedHeightBlockUpdateHandler.HANDLER_NAME) != null) {
             return;
         }
@@ -144,15 +144,15 @@ public class MCPVLBPipeline extends VLBPipeline {
                     new ExtendedHeightBlockUpdateHandler());
             logPipeline(ctx, "block-update reinjection installed after Via decoder");
         }
-    }
+    }*/
 
-    private void moveExtendedHeightBlockUpdateHandler(ChannelHandlerContext ctx) {
+    /*private void moveExtendedHeightBlockUpdateHandler(ChannelHandlerContext ctx) {
         if (ctx.pipeline().get(ExtendedHeightBlockUpdateHandler.HANDLER_NAME) != null) {
             ctx.pipeline().remove(ExtendedHeightBlockUpdateHandler.HANDLER_NAME);
         }
 
         installExtendedHeightBlockUpdateHandler(ctx);
-    }
+    }*/
 
     private void moveMovementFlagFixHandler(ChannelHandlerContext ctx) {
         if (ctx.pipeline().get(PacketFixFor1_21Plus.HANDLER_NAME) != null) {

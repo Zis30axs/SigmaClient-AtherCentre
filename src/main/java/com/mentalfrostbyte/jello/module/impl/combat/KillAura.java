@@ -39,6 +39,7 @@ import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.entity.projectile.ProjectileHelper;
 import net.minecraft.item.SwordItem;
+import net.minecraft.network.play.client.CPlayerPacket;
 import net.minecraft.network.play.server.SEntityStatusPacket;
 import net.minecraft.network.play.server.SAnimateHandPacket;
 import net.minecraft.util.Hand;
@@ -117,7 +118,7 @@ public class KillAura extends Module {
                 "NCP",
                 "AAC", "Smooth",
                 "LockView", "Test",
-                "Test2", "JelloAI", "None"));
+                "Test2", "JelloAI", "Grim1.17", "None"));
         this.registerSetting(this.useRotationSpeed = new BooleanSetting("Use Rotation Speed",
                 "Max rotation change per tick.", true));
         this.registerSetting(this.rotationSpeed = new NumberSetting<>("Rotation Speed", "Max rotation change per tick.",
@@ -354,7 +355,7 @@ public class KillAura extends Module {
                 }
 
                 // Only apply GCD and rotation limits if not using JelloAI
-                if (!rotationMode.currentValue.equals("JelloAI")) {
+                if (!rotationMode.currentValue.equals("JelloAI") && !rotationMode.currentValue.equals("Grim1.17")) {
                     float hSpeed = rotationSpeed.currentValue;
                     float vSpeed = rotationSpeed.currentValue;
 
@@ -717,6 +718,10 @@ public class KillAura extends Module {
                 this.currentRotation.yaw = advancedRotation.yaw;
                 this.currentRotation.pitch = advancedRotation.pitch;
                 break;
+            case "Grim1.17":
+                this.currentRotation.yaw = advancedRotation.yaw;
+                this.currentRotation.pitch = advancedRotation.pitch;
+                break;
             case "AAC":
                 float yawSpeed3 = 10.0F;
                 float pitchSpeed3 = 10.0F;
@@ -888,6 +893,11 @@ public class KillAura extends Module {
                             mc.player.swingArm(Hand.MAIN_HAND);
                         }
 
+                        if (rotationMode.currentValue.equals("Grim1.17")) {
+                            mc.getConnection().sendPacket(new CPlayerPacket.PositionRotationPacket(mc.player.getPosX(),mc.player.getPosY(),mc.player.getPosZ(),currentRotation.yaw,currentRotation.pitch,mc.player.onGround));
+                            //mc.getConnection().sendPacket(new CPlayerPacket.PositionRotationPacket(mc.player.getPosX(),mc.player.getPosY(),mc.player.getPosZ(),mc.player.rotationYaw,mc.player.rotationPitch,mc.player.onGround));
+                        }
+
                         if (ViaLoadingBase.getInstance().getTargetVersion().olderThanOrEqualTo(ProtocolVersion.v1_8)) {
                             if (this.getBooleanValueFromSettingName("Raytrace") && this.getBooleanValueFromSettingName("RaytraceMultiAttack")) {
                                 for (LivingEntity entitys : raytracelist) {
@@ -916,6 +926,11 @@ public class KillAura extends Module {
                                     mc.player.swingArm(Hand.MAIN_HAND);
                                 }
                             }
+                        }
+
+                        if (rotationMode.currentValue.equals("Grim1.17")) {
+                            //mc.getConnection().sendPacket(new CPlayerPacket.PositionRotationPacket(mc.player.getPosX(),mc.player.getPosY(),mc.player.getPosZ(),currentRotation.yaw,currentRotation.pitch,mc.player.onGround));
+                            mc.getConnection().sendPacket(new CPlayerPacket.PositionRotationPacket(mc.player.getPosX(),mc.player.getPosY(),mc.player.getPosZ(),mc.player.rotationYaw,mc.player.rotationPitch,mc.player.onGround));
                         }
 
                         // Record successful hit for JelloAI

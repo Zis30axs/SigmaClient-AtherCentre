@@ -20,6 +20,7 @@ import com.mentalfrostbyte.jello.util.game.world.blocks.BlockUtil;
 import com.viaversion.viaversion.api.protocol.version.ProtocolVersion;
 import de.florianmichael.vialoadingbase.ViaLoadingBase;
 import net.minecraft.entity.Entity;
+import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.network.IPacket;
 import net.minecraft.network.NetworkManager;
 import net.minecraft.network.play.client.CAnimateHandPacket;
@@ -102,7 +103,7 @@ public class AttackReduceAntiKB extends Module {
                 if (NeedCancelSPacket(packet)) {
                     alinkpackets.add(event.packet);
                     event.cancelled = true;
-                    if (packet instanceof  SPlayerPositionLookPacket) {
+                    if (packet instanceof SPlayerPositionLookPacket) {
                         releaseAlinkPacket();
                     }
                     return;
