@@ -445,6 +445,7 @@ public class PlayerController
 
     private void sendUseItemOnBlockPacket(ClientPlayerEntity player, Hand hand, BlockRayTraceResult hit)
     {
+        //右键可能造成rotplace postflying
         //InteractionSemantics.sendPreUseMovement(this.connection, player);
         if (player != null && hit != null
                 && JelloPortal.getVersion() != null
