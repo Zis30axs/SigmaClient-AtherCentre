@@ -445,7 +445,7 @@ public class PlayerController
 
     private void sendUseItemOnBlockPacket(ClientPlayerEntity player, Hand hand, BlockRayTraceResult hit)
     {
-        InteractionSemantics.sendPreUseMovement(this.connection, player);
+        //InteractionSemantics.sendPreUseMovement(this.connection, player);
         if (player != null && hit != null
                 && JelloPortal.getVersion() != null
                 && JelloPortal.getVersion().equalTo(ProtocolVersion.v1_8)) {
@@ -463,6 +463,9 @@ public class PlayerController
                     player.getPendingPlacementPitch());
         }
         this.connection.sendPacket(new CPlayerTryUseItemOnBlockPacket(hand, hit));
+        //1.17-1.20.5 grim rotplace-post-flying
+        //InteractionSemantics.sendPreUseMovement(this.connection, player);
+        //player.sendPreUseItemRotation();
     }
 
     private void sendUseItemPacket(PlayerEntity player, Hand hand)
