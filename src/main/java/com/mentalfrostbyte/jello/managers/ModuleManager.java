@@ -88,6 +88,7 @@ public class ModuleManager {
 
         // COMBAT
         this.register(new AutoClicker());
+        this.register(new Anthropic());
         this.register(new AntiKnockback());
         this.register(new Criticals());
         this.register(new Teams());
