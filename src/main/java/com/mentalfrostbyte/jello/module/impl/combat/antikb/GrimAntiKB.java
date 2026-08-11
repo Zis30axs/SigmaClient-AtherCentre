@@ -24,11 +24,11 @@ public class GrimAntiKB extends Module {
             if (event.packet instanceof SEntityVelocityPacket packet) {
                 if (packet.getEntityID() == mc.player.getEntityId()) {
                     event.cancelled = true;
-                }
-                if (grimmode.getCurrentValue().equals("GrimC07")) {
-                    BlockPos pos = new BlockPos(mc.player.getPosX(),mc.player.getPosY(),mc.player.getPosZ());
-                    mc.getConnection().sendPacket(new CPlayerDiggingPacket(CPlayerDiggingPacket.Action.STOP_DESTROY_BLOCK, pos, Direction.DOWN));
-                    mc.getConnection().sendPacket(new CPlayerDiggingPacket(CPlayerDiggingPacket.Action.STOP_DESTROY_BLOCK, pos.up(), Direction.DOWN));
+                    if (grimmode.getCurrentValue().equals("GrimC07")) {
+                        BlockPos pos = new BlockPos(mc.player.getPosX(),mc.player.getPosY(),mc.player.getPosZ());
+                        mc.getConnection().sendPacket(new CPlayerDiggingPacket(CPlayerDiggingPacket.Action.STOP_DESTROY_BLOCK, pos, Direction.DOWN));
+                        mc.getConnection().sendPacket(new CPlayerDiggingPacket(CPlayerDiggingPacket.Action.STOP_DESTROY_BLOCK, pos.up(), Direction.DOWN));
+                    }
                 }
             }
 

@@ -175,7 +175,7 @@ public class ModuleManager {
         this.register(new Parkour());
         this.register(new Sneak());
         this.register(new OldHitting());
-        this.register(new InvWalk());
+        this.register(new InvMove());
         this.register(new FastEat());
         this.register(new XCarry());
         // ITEM

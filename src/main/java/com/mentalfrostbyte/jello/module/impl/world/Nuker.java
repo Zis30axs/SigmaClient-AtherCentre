@@ -17,6 +17,7 @@ import com.mentalfrostbyte.jello.util.game.render.RenderUtil;
 import net.minecraft.block.*;
 import net.minecraft.network.play.client.CAnimateHandPacket;
 import net.minecraft.network.play.client.CPlayerDiggingPacket;
+import net.minecraft.state.properties.BedPart;
 import net.minecraft.util.Direction;
 import net.minecraft.util.Hand;
 import net.minecraft.util.math.AxisAlignedBB;
@@ -40,6 +41,12 @@ public class Nuker extends Module {
         this.registerSetting(new ModeSetting("Mode", "Mode", 0, "All", "One hit", "Bed", "Egg"));
         this.registerSetting(new BooleanSetting("NoSwing", "Removes the swing animation.", false));
         this.registerSetting(new BooleanSetting("RayTrace","",false));
+        this.registerSetting(new BooleanSetting("First BedOuter","Break Bed first outer bypass some Plugin",false) {
+            @Override
+            public boolean isHidden() {
+                return !getStringSettingValueByName("Mode").equals("Bed");
+            }
+        });
         this.registerSetting(new BooleanListSetting("Blocks", "Blocks to destroy", true));
         this.registerSetting(new ColorSetting("Color", "The rendered block color", ClientColors.MID_GREY.getColor(), true));
     }
@@ -60,7 +67,8 @@ public class Nuker extends Module {
             } else if (mc.playerController.getCurrentGameType() != GameType.CREATIVE) {
                 if (this.targetPos != null) {
                     if (mc.world.getBlockState(this.targetPos).isAir()
-                            || eyeDistanceTo(this.targetPos) > (double) range) {
+                            || eyeDistanceTo(this.targetPos) > (double) range
+                            || !this.blocksToDestroy.contains(this.targetPos)) {
                         this.targetPos = this.blocksToDestroy.get(0);
                     }
 
@@ -143,6 +151,49 @@ public class Nuker extends Module {
         return mc.world.getBlockState(pos).getMaterial().isReplaceable() || block instanceof BushBlock;
     }
 
+    /**
+     * 床周围需要清空的 8 个格子:上方 2、床头床尾各 1、左右各 2。
+     * 纯几何计算,不读世界,便于单独校验。
+     */
+    public static BlockPos[] getBedSurroundings(BlockPos bed, Direction facing, BedPart part) {
+        Direction toOther = part == BedPart.HEAD ? facing.getOpposite() : facing;
+        BlockPos other = bed.offset(toOther);
+        return new BlockPos[]{
+                bed.up(), other.up(),
+                other.offset(toOther), bed.offset(toOther.getOpposite()),
+                bed.offset(facing.rotateY()), other.offset(facing.rotateY()),
+                bed.offset(facing.rotateYCCW()), other.offset(facing.rotateYCCW())
+        };
+    }
+
+    /**
+     * 只要有一格是空气/流体就说明床已裸露,返回 null 直接挖床;
+     * 否则返回一个可破坏的覆盖方块,先挖它。
+     * 已经在挖的那格优先保留,换目标会让服务端 ABORT 并清空挖掘进度。
+     */
+    private BlockPos findBedCover(BlockPos bed, float range) {
+        BlockState bedState = mc.world.getBlockState(bed);
+        BlockPos best = null;
+
+        for (BlockPos pos : getBedSurroundings(bed, bedState.get(BedBlock.HORIZONTAL_FACING), bedState.get(BedBlock.PART))) {
+            BlockState state = mc.world.getBlockState(pos);
+            if (state.isAir() || !state.getFluidState().isEmpty()) {
+                return null;
+            }
+            if (state.getBlockHardness(mc.world, pos) < 0.0F || eyeDistanceTo(pos) >= (double) range) {
+                continue;
+            }
+            if (pos.equals(this.targetPos)) {
+                return pos;
+            }
+            if (best == null || eyeDistanceTo(pos) < eyeDistanceTo(best)) {
+                best = pos;
+            }
+        }
+
+        return best;
+    }
+
     public List<BlockPos> getBlocksToDestroy(float range) {
         ArrayList<BlockPos> blocksToDestroy = new ArrayList<>();
 
@@ -167,6 +218,15 @@ public class Nuker extends Module {
                             case "Bed":
                                 if (!(mc.world.getBlockState(pos).getBlock() instanceof BedBlock)) {
                                     continue;
+                                }
+                                if (this.getBooleanValueFromSettingName("First BedOuter")) {
+                                    BlockPos cover = this.findBedCover(pos, range);
+                                    if (cover != null) {
+                                        if (!blocksToDestroy.contains(cover)) {
+                                            blocksToDestroy.add(cover);
+                                        }
+                                        continue;
+                                    }
                                 }
                                 break;
                             case "Egg":
