@@ -53,7 +53,7 @@ public class ChunkDataInterceptor extends ChannelInboundHandlerAdapter {
                         int stateId = readVarInt(buf);
                         int x = WorldHeightHelper.blockPosX(pos);
                         int z = WorldHeightHelper.blockPosZ(pos);
-                        //ExtendedBlockUpdateStore.putSingle(x, y, z, stateId);
+                        ExtendedBlockUpdateStore.putSingle(x, y, z, stateId);
                         logCapturedBlockUpdate(packetId, x, y, z, stateId);
                     }
                 } else if (WorldHeightHelper.isRawSectionBlocksUpdatePacket(packetId)) {
@@ -62,7 +62,7 @@ public class ChunkDataInterceptor extends ChannelInboundHandlerAdapter {
                     if (!WorldHeightHelper.isTranslatedSectionInBounds(sectionY)) {
                         byte[] payload = new byte[buf.readableBytes()];
                         buf.readBytes(payload);
-                        //ExtendedBlockUpdateStore.putMulti(sectionPos, payload);
+                        ExtendedBlockUpdateStore.putMulti(sectionPos, payload);
                         logCapturedSectionBlocksUpdate(packetId, sectionPos, sectionY, payload.length);
                     }
                 } else if (WorldHeightHelper.isRawBlockDestructionPacket(packetId)) {
@@ -73,7 +73,7 @@ public class ChunkDataInterceptor extends ChannelInboundHandlerAdapter {
                         int stage = buf.readUnsignedByte();
                         int x = WorldHeightHelper.blockPosX(pos);
                         int z = WorldHeightHelper.blockPosZ(pos);
-                        //ExtendedBlockUpdateStore.putDestruction(entityId, x, y, z, stage);
+                        ExtendedBlockUpdateStore.putDestruction(entityId, x, y, z, stage);
                         logCapturedBlockDestruction(packetId, entityId, x, y, z, stage);
                     }
                 }
@@ -94,7 +94,7 @@ public class ChunkDataInterceptor extends ChannelInboundHandlerAdapter {
 
     public static void clearAll() {
         ExtendedChunkDataStore.clearAll();
-        //ExtendedBlockUpdateStore.clearAll();
+        ExtendedBlockUpdateStore.clearAll();
     }
 
     public static boolean isDebugEnabled() {
