@@ -9,7 +9,7 @@ import com.mentalfrostbyte.jello.event.impl.player.action.EventPlace;
 import com.mentalfrostbyte.jello.event.impl.player.movement.EventJump;
 import com.mentalfrostbyte.jello.event.impl.player.movement.EventMove;
 import com.mentalfrostbyte.jello.event.impl.player.movement.EventSafeWalk;
-import com.mentalfrostbyte.jello.managers.RotationManager;
+import com.mentalfrostbyte.jello.util.game.player.rotation.RotationCore;
 import com.mentalfrostbyte.jello.module.Module;
 import com.mentalfrostbyte.jello.module.data.ModuleCategory;
 import com.mentalfrostbyte.jello.module.impl.movement.BlockFly;
@@ -55,7 +55,7 @@ import team.sdhq.eventBus.annotations.priority.LowestPriority;
  *       HSpeed/VSpeed.</li>
  *   <li>Mode-specific behaviour: eagle on edges (Normal), jump-press driving
  *       (Telly Bridge / Keep Y), sneak boost (all).</li>
- *   <li>Submit {@link #rots} to {@link RotationManager#setRotations} so
+ *   <li>Submit {@link #rots} to {@link RotationCore#setRotations} so
  *       silent strafe, outgoing motion packets, <em>and</em> visual camera
  *       rendering (via {@code FixLook} in CorrectMovement) all pick up
  *       the scaffold rotation. Update {@link #lastRots}.</li>
@@ -336,7 +336,7 @@ public class BlockFlyAACMode extends Module {
         //     via RotationManager.onLook — head visibly turns toward the
         //     placement face,
         //   • silentStrafe input correction via RotationManager.onInput.
-        RotationManager.setRotations(this.rots.yaw, this.rots.pitch);
+        RotationCore.setRotations(this.rots.yaw, this.rots.pitch);
         this.lastRots = new Rotation(this.rots.yaw, this.rots.pitch);
 
         // Tower-while-moving for Vanilla tower (kept from original).

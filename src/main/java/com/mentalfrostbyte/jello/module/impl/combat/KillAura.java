@@ -12,7 +12,6 @@ import com.mentalfrostbyte.jello.event.impl.player.action.EventStopUseItem;
 import com.mentalfrostbyte.jello.event.impl.player.action.EventUseItem;
 import com.mentalfrostbyte.jello.event.impl.player.movement.EventMotion;
 import com.mentalfrostbyte.jello.gui.base.animations.Animation;
-import com.mentalfrostbyte.jello.managers.RotationManager;
 import com.mentalfrostbyte.jello.managers.util.notifs.Notification;
 import com.mentalfrostbyte.jello.module.Module;
 import com.mentalfrostbyte.jello.module.data.ModuleCategory;
@@ -55,7 +54,7 @@ import team.sdhq.eventBus.annotations.priority.LowestPriority;
 import java.util.*;
 import java.util.Map.Entry;
 
-@SuppressWarnings({ "unused", "cast" })
+@SuppressWarnings({ "unused", "cast", "static-access" })
 public class KillAura extends Module {
     public static boolean isActive = false;
     public static Entity targetEntity;
@@ -345,8 +344,8 @@ public class KillAura extends Module {
                     this.currentRotation.yaw = JelloAI.getCurrentYaw();
                     this.currentRotation.pitch = JelloAI.getCurrentPitch();
 
-                    // Update RotationCore values
-                    RotationManager.setRotations(this.currentRotation.yaw,this.currentRotation.pitch);
+                    // Publish rotations to RotationCore (KillAura always rotates, regardless of crtMov mode)
+                    this.publishRotations(this.currentRotation.yaw, this.currentRotation.pitch);
                 } else if (eventUpdateYaw - mc.player.rotationYaw != 0.0F
                         && (rotationMode.currentValue.equals("Test1") || rotationMode.currentValue.equals("Test"))
                         && mc.player.ticksExisted % 50 == 0) {
@@ -371,7 +370,7 @@ public class KillAura extends Module {
                     currentRotation.yaw = RotationUtils.gcdFix(limitedRotation, oldRots)[0];
                     currentRotation.pitch = RotationUtils.gcdFix(limitedRotation, oldRots)[1];
 
-                    RotationManager.setRotations(currentRotation.yaw,currentRotation.pitch);
+                    this.publishRotations(currentRotation.yaw, currentRotation.pitch);
                 }
 
                 mc.gameRenderer.getMouseOver(1.0F); // might fix issue with slow raytrace update
@@ -766,6 +765,14 @@ public class KillAura extends Module {
         }
 
         this.currentRotation.pitch = MathHelper.clamp(this.currentRotation.pitch, -90.0F, 90.0F);
+    }
+
+    /**
+     * KillAura always publishes its rotations to RotationCore. The active CorrectMovement
+     * mode reads them from there; CorrectMovement itself only manages movement correction.
+     */
+    private void publishRotations(float yaw, float pitch) {
+        RotationCore.setRotations(yaw, pitch);
     }
 
     private EntityRayTraceResult rayTraceWithKillAuraRotation(LivingEntity expectedTarget) {

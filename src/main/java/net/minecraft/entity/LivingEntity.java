@@ -9,6 +9,7 @@ import com.mentalfrostbyte.Client;
 import com.mentalfrostbyte.jello.event.impl.player.LivingDeathEvent;
 import com.mentalfrostbyte.jello.event.impl.player.movement.EventJump;
 import com.mentalfrostbyte.jello.module.impl.player.AutoSprint;
+import com.mentalfrostbyte.jello.util.game.player.rotation.RotationCore;
 import com.mojang.datafixers.util.Pair;
 import com.mojang.serialization.DataResult;
 import com.mojang.serialization.Dynamic;
@@ -2508,6 +2509,14 @@ public abstract class LivingEntity extends Entity {
 
         if (this.swingProgress > 0.0F) {
             f1 = this.rotationYaw;
+        }
+
+        // OpenZen head/body sync: pin the body to the published view yaw instead of the
+        // travel direction computed above, so strafing produces no diagonal lean and the body
+        // turns as one with the head. The lock is entity- and tick-scoped, so it applies to the
+        // local player only and lapses on its own if the publishing mode stops running.
+        if (RotationCore.isBodyLocked(this.getEntityId(), this.ticksExisted)) {
+            f1 = RotationCore.bodyLockYaw;
         }
 
         if (!this.onGround) {
