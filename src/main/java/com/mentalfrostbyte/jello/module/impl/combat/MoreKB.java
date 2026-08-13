@@ -111,8 +111,8 @@ public class MoreKB extends Module {
         return mc.player.movementInput.moveForward != 0.0F || mc.player.movementInput.moveStrafe != 0.0F;
     }
 
-    @Override
-    public String getFormattedName() {
-        return this.getName() + " §7" + this.mode.getCurrentValue();
-    }
+   // @Override
+    //public String getFormattedName() {
+     //   return this.getName() + " §7" + this.mode.getCurrentValue();
+    //Claude为什么总是这样啊
 }
