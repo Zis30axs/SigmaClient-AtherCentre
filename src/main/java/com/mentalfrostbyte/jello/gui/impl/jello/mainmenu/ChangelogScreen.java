@@ -29,7 +29,7 @@ public class ChangelogScreen extends CustomGuiScreen {
     public ScrollableContentPanel scrollPanel;
     private static JsonArray cachedChangelog;
 
-    private int opencount = 0;
+    public static int opencount = 0;
     private boolean wasHovered = false;
     public static boolean isEasteregg = false;
 
@@ -122,7 +122,11 @@ public class ChangelogScreen extends CustomGuiScreen {
                 versionText,
                 RenderUtil2.applyAlpha(ClientColors.LIGHT_GREYISH_BLUE.getColor(), 0.6f * partialTicks));
         if (opencount >= 10) {
-            GLFW.glfwSetWindowTitle(mc.getMainWindow().getHandle(), "Sigma Never Die!!!");
+            if (opencount >= 56) {
+                GLFW.glfwSetWindowTitle(mc.getMainWindow().getHandle(), "LLTP!");
+            } else {
+                GLFW.glfwSetWindowTitle(mc.getMainWindow().getHandle(), "Sigma Never Die!!!");
+            }
             isEasteregg = true;
         }
         super.draw(partialTicks);

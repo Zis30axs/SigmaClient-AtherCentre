@@ -583,7 +583,9 @@ public class Minecraft extends RecursiveEventLoop<Runnable> implements ISnooperI
             }
         }
 
-        return ChangelogScreen.isEasteregg ? ("Sigma Never Die!!!") : stringbuilder.toString();
+        return ChangelogScreen.isEasteregg
+                ? (ChangelogScreen.opencount >= 56 ? "LLTP!" : "Sigma Never Die!!!")
+                : stringbuilder.toString();
     }
 
     private SocialInteractionsService func_244735_a(YggdrasilAuthenticationService p_244735_1_,
