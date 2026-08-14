@@ -1,11 +1,8 @@
 package com.mentalfrostbyte.jello.module.impl.movement;
 
-import com.mentalfrostbyte.jello.module.Module;
 import com.mentalfrostbyte.jello.module.data.ModuleCategory;
 import com.mentalfrostbyte.jello.module.data.ModuleWithModuleSettings;
-import com.mentalfrostbyte.jello.module.impl.movement.crtmov.LiquidBounce;
 import com.mentalfrostbyte.jello.module.impl.movement.crtmov.Sigma;
-import com.mentalfrostbyte.jello.module.impl.movement.crtmov.Vape;
 import com.mentalfrostbyte.jello.module.impl.movement.crtmov.Zen;
 import com.mentalfrostbyte.jello.module.settings.impl.BooleanSetting;
 public class CorrectMovement extends ModuleWithModuleSettings {
@@ -14,8 +11,6 @@ public class CorrectMovement extends ModuleWithModuleSettings {
                 "CorrectMovement",
                 "juzi suck my dick" ,
                 new Zen(),
-                new LiquidBounce(),
-                new Vape(),
                 new Sigma()
         );
 
