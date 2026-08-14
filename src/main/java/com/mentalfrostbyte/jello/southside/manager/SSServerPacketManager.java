@@ -25,6 +25,7 @@ import net.minecraft.network.handshake.client.CHandshakePacket;
 import net.minecraft.network.login.client.CEncryptionResponsePacket;
 import net.minecraft.network.login.client.CLoginStartPacket;
 import net.minecraft.network.play.client.CChatMessagePacket;
+import net.minecraft.network.play.client.CKeepAlivePacket;
 import net.minecraft.network.status.client.CServerQueryPacket;
 import team.sdhq.eventBus.EventBus;
 import team.sdhq.eventBus.annotations.EventTarget;
@@ -125,8 +126,15 @@ public final class SSServerPacketManager {
         }
 
         IPacket<?> packet = event.packet;
-        // Connection-critical packets must pass through (same skip list as the host Blink).
-        if (packet instanceof CHandshakePacket
+        // Connection-critical packets must pass through. NOTE: this is the host Blink's skip
+        // list PLUS CKeepAlivePacket — Blink has that one commented out, which is a bug there.
+        // ClientPlayNetHandler#handleKeepAlive answers on the Netty thread with no
+        // checkThreadAndEnqueue, so the reply goes through this handler; holding it makes
+        // ServerPlayNetHandler kick with disconnect.timeout ("Timed out") either after 15 s
+        // (keepAlivePending still set) or immediately when the stale reply finally arrives with
+        // a no-longer-matching id. Never queue it.
+        if (packet instanceof CKeepAlivePacket
+                || packet instanceof CHandshakePacket
                 || packet instanceof CLoginStartPacket
                 || packet instanceof CServerQueryPacket
                 || packet instanceof CChatMessagePacket

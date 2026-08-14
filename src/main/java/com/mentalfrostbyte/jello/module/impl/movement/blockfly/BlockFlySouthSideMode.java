@@ -78,6 +78,7 @@ import com.mentalfrostbyte.jello.util.client.render.ResourceRegistry;
 import com.mentalfrostbyte.jello.util.game.render.RenderUtil;
 import net.minecraft.block.AirBlock;
 import net.minecraft.block.Block;
+import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
 import net.minecraft.block.DoorBlock;
 import net.minecraft.block.FenceGateBlock;
@@ -105,8 +106,10 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static java.lang.Math.abs;
 import static java.lang.Math.atan2;
@@ -270,8 +273,13 @@ public class BlockFlySouthSideMode extends Module {
             super.onDisable();
             return;
         }
-        mc.player.inventory.currentItem = slot.slot();
-        mc.player.inventory.currentItem = oldSlot;
+        // slot == null means onEnable() never ran its body: the parent enables sub-modes through
+        // setEnabledBasic() when mc.player is null (restoring an enabled BlockFly from the config
+        // at startup), which skips onEnable() entirely. Nothing was captured, so restore nothing —
+        // oldSlot would still be 0 and would yank the hotbar to slot 1.
+        if (slot != null) {
+            mc.player.inventory.currentItem = oldSlot;
+        }
         mc.gameSettings.keyBindSneak.setPressed(false);
         SSMovementUtils.resetMove();
         super.onDisable();
@@ -1108,46 +1116,59 @@ public class BlockFlySouthSideMode extends Module {
     }
 
     public boolean isPosSolid(BlockPos pos) {
-        final Block block = mc.world.getBlockState(pos).getBlock();
+        BlockState state = mc.world.getBlockState(pos);
+        final Block block = state.getBlock();
         // Exclude interactable blocks — right-clicking them opens/closes instead of placing
         if (block instanceof TrapDoorBlock || block instanceof DoorBlock || block instanceof FenceGateBlock) {
             return false;
         }
-        // 1.16.5 note: SHORT_GRASS -> GRASS; TORCHFLOWER and CHERRY_BUTTON do not exist and
-        // were dropped from the upstream list.
-        return !Arrays.asList(
-                Blocks.ANVIL,
-                Blocks.AIR,
-                Blocks.WATER,
-                Blocks.FIRE,
-                Blocks.LAVA,
-                Blocks.SKELETON_SKULL,
-                Blocks.OAK_SIGN,
-                Blocks.TRAPPED_CHEST,
-                Blocks.CHEST,
-                Blocks.ENCHANTING_TABLE,
-                Blocks.ENDER_CHEST,
-                Blocks.CRAFTING_TABLE,
-                Blocks.DAYLIGHT_DETECTOR,
-                Blocks.COBWEB,
-                Blocks.GRASS,
-                Blocks.FLOWER_POT,
-                Blocks.CHORUS_FLOWER,
-                Blocks.SUNFLOWER,
-                Blocks.CORNFLOWER,
-                Blocks.OAK_BUTTON,
-                Blocks.ACACIA_BUTTON,
-                Blocks.BIRCH_BUTTON,
-                Blocks.CRIMSON_BUTTON,
-                Blocks.DARK_OAK_BUTTON,
-                Blocks.JUNGLE_BUTTON,
-                Blocks.STONE_BUTTON,
-                Blocks.WARPED_BUTTON,
-                Blocks.SPRUCE_BUTTON,
-                Blocks.NOTE_BLOCK,
-                Blocks.PLAYER_HEAD
-        ).contains(block) && !SSClientRayTraceUtil.isIgnoredBlock(mc.world.getBlockState(pos));
+        return !NON_SOLID_FOR_BRIDGING.contains(block) && !SSClientRayTraceUtil.isIgnoredBlock(state);
     }
+
+    /*
+     * Hoisted out of isPosSolid(). getBlockPos() calls it once per position returned by
+     * searchBlocks(5) — 1000 positions — and getBlockData() runs up to 3x per tick, so building
+     * a fresh Arrays.asList here cost ~3000 list allocations and ~80k linear comparisons every
+     * tick. That is enough main-thread load to push mc.getQueueSize() / the netty event loop
+     * past ViaNetworkDiagnostics' backlog thresholds, which suppresses movement packets and
+     * (via joinBackpressure) disables autoRead — i.e. the client stops reading keepalives.
+     * Same block list as before, as a hash set.
+     *
+     * 1.16.5 note: SHORT_GRASS -> GRASS; TORCHFLOWER and CHERRY_BUTTON do not exist and
+     * were dropped from the upstream list.
+     */
+    private static final Set<Block> NON_SOLID_FOR_BRIDGING = new HashSet<>(Arrays.asList(
+            Blocks.ANVIL,
+            Blocks.AIR,
+            Blocks.WATER,
+            Blocks.FIRE,
+            Blocks.LAVA,
+            Blocks.SKELETON_SKULL,
+            Blocks.OAK_SIGN,
+            Blocks.TRAPPED_CHEST,
+            Blocks.CHEST,
+            Blocks.ENCHANTING_TABLE,
+            Blocks.ENDER_CHEST,
+            Blocks.CRAFTING_TABLE,
+            Blocks.DAYLIGHT_DETECTOR,
+            Blocks.COBWEB,
+            Blocks.GRASS,
+            Blocks.FLOWER_POT,
+            Blocks.CHORUS_FLOWER,
+            Blocks.SUNFLOWER,
+            Blocks.CORNFLOWER,
+            Blocks.OAK_BUTTON,
+            Blocks.ACACIA_BUTTON,
+            Blocks.BIRCH_BUTTON,
+            Blocks.CRIMSON_BUTTON,
+            Blocks.DARK_OAK_BUTTON,
+            Blocks.JUNGLE_BUTTON,
+            Blocks.STONE_BUTTON,
+            Blocks.WARPED_BUTTON,
+            Blocks.SPRUCE_BUTTON,
+            Blocks.NOTE_BLOCK,
+            Blocks.PLAYER_HEAD
+    ));
 
     public void rotationAbuse(float step, float targetYaw) {
         double change = SSRotationUtils.yawDiffDirectly(SSRotationUtils.getLastRotation().yaw, targetYaw);
