@@ -1,6 +1,7 @@
 package net.minecraft.inventory.container;
 
-import de.florianmichael.viamcp.fixes.compat.InteractionProtocol;
+import com.mentalfrostbyte.jello.gui.base.JelloPortal;
+import com.viaversion.viaversion.api.protocol.version.ProtocolVersion;
 import net.minecraft.advancements.CriteriaTriggers;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.entity.player.PlayerInventory;
@@ -79,7 +80,7 @@ public class BrewingStandContainer extends Container
 
             if ((index < 0 || index > 2) && index != 3 && index != 4)
             {
-                if (InteractionProtocol.supportsBrewingFuelSlot()
+                if (supportsBrewingFuelSlot()
                         && BrewingStandContainer.FuelSlot.isValidBrewingFuel(itemstack))
                 {
                     if (this.mergeItemStack(itemstack1, 4, 5, false) || this.slot.isItemValid(itemstack1) && !this.mergeItemStack(itemstack1, 3, 4, false))
@@ -169,7 +170,7 @@ public class BrewingStandContainer extends Container
 
         public boolean isItemValid(ItemStack stack)
         {
-            return InteractionProtocol.supportsBrewingFuelSlot() && isValidBrewingFuel(stack);
+            return supportsBrewingFuelSlot() && isValidBrewingFuel(stack);
         }
 
         public static boolean isValidBrewingFuel(ItemStack itemStackIn)
@@ -184,8 +185,14 @@ public class BrewingStandContainer extends Container
 
         public boolean isEnabled()
         {
-            return InteractionProtocol.supportsBrewingFuelSlot();
+            return supportsBrewingFuelSlot();
         }
+    }
+
+    /** 1.9+ is the first version with the brewing-stand fuel slot. */
+    private static boolean supportsBrewingFuelSlot() {
+        ProtocolVersion target = JelloPortal.getVersion();
+        return target != null && target.newerThan(ProtocolVersion.v1_8);
     }
 
     static class IngredientSlot extends Slot

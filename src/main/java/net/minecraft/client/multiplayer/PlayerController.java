@@ -4,13 +4,13 @@ import com.mentalfrostbyte.jello.gui.base.JelloPortal;
 import com.mentalfrostbyte.jello.util.game.player.InvManagerUtil;
 import com.mojang.datafixers.util.Pair;
 import com.viaversion.viaversion.api.protocol.version.ProtocolVersion;
-import de.florianmichael.viamcp.fixes.compat.InteractionProtocol;
-import de.florianmichael.viamcp.fixes.compat.InteractionSemantics;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
+import net.minecraft.block.AbstractFireBlock;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.CommandBlockBlock;
 import net.minecraft.block.JigsawBlock;
+import net.minecraft.block.SnowBlock;
 import net.minecraft.block.SoundType;
 import net.minecraft.block.StructureBlock;
 import net.minecraft.client.Minecraft;
@@ -34,6 +34,7 @@ import net.minecraft.network.play.client.CHeldItemChangePacket;
 import net.minecraft.network.play.client.CPickItemPacket;
 import net.minecraft.network.play.client.CPlaceRecipePacket;
 import net.minecraft.network.play.client.CPlayerDiggingPacket;
+import net.minecraft.network.play.client.CPlayerPacket;
 import net.minecraft.network.play.client.CPlayerTryUseItemOnBlockPacket;
 import net.minecraft.network.play.client.CPlayerTryUseItemPacket;
 import net.minecraft.network.play.client.CUseEntityPacket;
@@ -165,7 +166,7 @@ public class PlayerController
         }
         else
         {
-            if (InteractionSemantics.extinguishFireBeforeBreak(this.mc.world, loc)) {
+            if (extinguishFireBeforeBreak(this.mc.world, loc)) {
                 this.sendDiggingPacket(CPlayerDiggingPacket.Action.START_DESTROY_BLOCK, loc, face);
                 this.blockHitDelay = 5;
                 return true;
@@ -225,7 +226,7 @@ public class PlayerController
             this.isHittingBlock = false;
             this.curBlockDamageMP = 0.0F;
             this.mc.world.sendBlockBreakProgress(this.mc.player.getEntityId(), this.currentBlock, -1);
-            if (InteractionProtocol.usesAttackAndItemCooldowns()) {
+            if (usesAttackAndItemCooldowns()) {
                 this.mc.player.resetCooldown();
             }
         }
@@ -340,11 +341,11 @@ public class PlayerController
 
     public ActionResultType func_217292_a(ClientPlayerEntity p_217292_1_, ClientWorld p_217292_2_, Hand p_217292_3_, BlockRayTraceResult p_217292_4_)
     {
-        if (!InteractionSemantics.isSupportedHand(p_217292_3_)) {
+        if (!isSupportedHand(p_217292_3_)) {
             return ActionResultType.PASS;
         }
 
-        p_217292_4_ = InteractionSemantics.adjustBlockHit(p_217292_2_, p_217292_4_);
+        p_217292_4_ = adjustBlockHit(p_217292_2_, p_217292_4_);
         this.syncCurrentPlayItem();
         BlockPos blockpos = p_217292_4_.getPos();
 
@@ -379,7 +380,7 @@ public class PlayerController
 
                 this.sendUseItemOnBlockPacket(p_217292_1_, p_217292_3_, p_217292_4_);
 
-                if (!itemstack.isEmpty() && (!InteractionSemantics.canUseItemCooldown(itemstack) || !p_217292_1_.getCooldownTracker().hasCooldown(itemstack.getItem())))
+                if (!itemstack.isEmpty() && (!canUseItemCooldown(itemstack) || !p_217292_1_.getCooldownTracker().hasCooldown(itemstack.getItem())))
                 {
                     ItemUseContext itemusecontext = new ItemUseContext(p_217292_1_, p_217292_3_, p_217292_4_);
                     ActionResultType actionresulttype1;
@@ -396,7 +397,7 @@ public class PlayerController
                         actionresulttype1 = itemstack.onItemUse(itemusecontext);
                     }
 
-                    return InteractionSemantics.legacyPlacementResult(actionresulttype1, itemstack, originalCount);
+                    return legacyPlacementResult(actionresulttype1, itemstack, originalCount);
                 }
                 else
                 {
@@ -408,7 +409,7 @@ public class PlayerController
 
     public ActionResultType processRightClick(PlayerEntity player, World worldIn, Hand hand)
     {
-        if (!InteractionSemantics.isSupportedHand(hand))
+        if (!isSupportedHand(hand))
         {
             return ActionResultType.PASS;
         }
@@ -423,7 +424,7 @@ public class PlayerController
             this.sendUseItemPacket(player, hand);
             ItemStack itemstack = player.getHeldItem(hand);
 
-            if (InteractionSemantics.canUseItemCooldown(itemstack) && player.getCooldownTracker().hasCooldown(itemstack.getItem()))
+            if (canUseItemCooldown(itemstack) && player.getCooldownTracker().hasCooldown(itemstack.getItem()))
             {
                 return ActionResultType.PASS;
             }
@@ -472,7 +473,7 @@ public class PlayerController
     private void sendUseItemPacket(PlayerEntity player, Hand hand)
     {
         if (player instanceof ClientPlayerEntity clientPlayer) {
-            InteractionSemantics.sendPreUseMovement(this.connection, clientPlayer);
+            sendPreUseMovement(this.connection, clientPlayer);
             clientPlayer.sendPreUseItemRotation();
         }
 
@@ -502,7 +503,7 @@ public class PlayerController
         if (this.currentGameType != GameType.SPECTATOR)
         {
             playerIn.attackTargetEntityWithCurrentItem(targetEntity);
-            if (InteractionProtocol.usesAttackAndItemCooldowns()) {
+            if (usesAttackAndItemCooldowns()) {
                 playerIn.resetCooldown();
             }
         }
@@ -513,7 +514,7 @@ public class PlayerController
      */
     public ActionResultType interactWithEntity(PlayerEntity player, Entity target, Hand hand)
     {
-        if (!InteractionSemantics.isSupportedHand(hand)) {
+        if (!isSupportedHand(hand)) {
             return ActionResultType.PASS;
         }
 
@@ -527,7 +528,7 @@ public class PlayerController
      */
     public ActionResultType interactWithEntity(PlayerEntity player, Entity target, EntityRayTraceResult ray, Hand hand)
     {
-        if (!InteractionSemantics.isSupportedHand(hand)) {
+        if (!isSupportedHand(hand)) {
             return ActionResultType.PASS;
         }
 
@@ -542,7 +543,7 @@ public class PlayerController
      */
     public ItemStack windowClick(int windowId, int slotId, int mouseButton, ClickType type, PlayerEntity player)
     {
-        if (!InteractionSemantics.isInventoryActionSupported(slotId, mouseButton, type)) {
+        if (!isInventoryActionSupported(slotId, mouseButton, type)) {
             return ItemStack.EMPTY;
         }
 
@@ -571,7 +572,7 @@ public class PlayerController
      */
     public void sendSlotPacket(ItemStack itemStackIn, int slotId)
     {
-        if (!InteractionSemantics.isInventoryActionSupported(slotId, 0, ClickType.PICKUP)) {
+        if (!isInventoryActionSupported(slotId, 0, ClickType.PICKUP)) {
             return;
         }
 
@@ -634,11 +635,11 @@ public class PlayerController
     public ActionResultType processRightClickBlock(ClientPlayerEntity p_217292_1_, ClientWorld p_217292_2_, BlockPos pos, Direction face, Vector3d hitvec, Hand p_217292_3_)
     {
         BlockRayTraceResult p_217292_4_ = new BlockRayTraceResult(hitvec, face, pos, false);
-        if (!InteractionSemantics.isSupportedHand(p_217292_3_)) {
+        if (!isSupportedHand(p_217292_3_)) {
             return ActionResultType.PASS;
         }
 
-        p_217292_4_ = InteractionSemantics.adjustBlockHit(p_217292_2_, p_217292_4_);
+        p_217292_4_ = adjustBlockHit(p_217292_2_, p_217292_4_);
         this.syncCurrentPlayItem();
         BlockPos blockpos = p_217292_4_.getPos();
 
@@ -673,7 +674,7 @@ public class PlayerController
 
                 this.sendUseItemOnBlockPacket(p_217292_1_, p_217292_3_, p_217292_4_);
 
-                if (!itemstack.isEmpty() && (!InteractionSemantics.canUseItemCooldown(itemstack) || !p_217292_1_.getCooldownTracker().hasCooldown(itemstack.getItem())))
+                if (!itemstack.isEmpty() && (!canUseItemCooldown(itemstack) || !p_217292_1_.getCooldownTracker().hasCooldown(itemstack.getItem())))
                 {
                     ItemUseContext itemusecontext = new ItemUseContext(p_217292_1_, p_217292_3_, p_217292_4_);
                     ActionResultType actionresulttype1;
@@ -690,7 +691,7 @@ public class PlayerController
                         actionresulttype1 = itemstack.onItemUse(itemusecontext);
                     }
 
-                    return InteractionSemantics.legacyPlacementResult(actionresulttype1, itemstack, originalCount);
+                    return legacyPlacementResult(actionresulttype1, itemstack, originalCount);
                 }
                 else
                 {
@@ -733,7 +734,7 @@ public class PlayerController
 
     public void pickItem(int index)
     {
-        if (!InteractionProtocol.supportsPickItemPacket()) {
+        if (!supportsPickItemPacket()) {
             return;
         }
 
@@ -769,5 +770,124 @@ public class PlayerController
             this.unacknowledgedDiggingPackets.removeFirst();
             LOGGER.error("Too many unacked block actions, dropping " + pair);
         }
+    }
+
+    // ====================== Via interaction semantics ======================
+    //
+    // Target-version gates and packet adjustments for the interaction path,
+    // previously split across de.florianmichael.viamcp.fixes.compat
+    // (InteractionProtocol / InteractionSemantics). Everything here reduces to
+    // the Via target version read through JelloPortal.
+
+    /** 1.8 is the only target with instant legacy combat (no cooldowns, no offhand). */
+    private static boolean legacyCombat() {
+        ProtocolVersion target = JelloPortal.getVersion();
+        return target != null && target.olderThanOrEqualTo(ProtocolVersion.v1_8);
+    }
+
+    private static boolean atOrOlderThan1_12_2() {
+        ProtocolVersion target = JelloPortal.getVersion();
+        return target != null && target.olderThanOrEqualTo(ProtocolVersion.v1_12_2);
+    }
+
+    private static boolean atOrOlderThan1_15_2() {
+        ProtocolVersion target = JelloPortal.getVersion();
+        return target != null && target.olderThanOrEqualTo(ProtocolVersion.v1_15_2);
+    }
+
+    private static boolean between1_17And1_20_5() {
+        ProtocolVersion target = JelloPortal.getVersion();
+        return target != null
+                && target.newerThanOrEqualTo(ProtocolVersion.v1_17)
+                && target.olderThanOrEqualTo(ProtocolVersion.v1_20_5);
+    }
+
+    private static boolean usesAttackAndItemCooldowns() {
+        return !legacyCombat();
+    }
+
+    private static boolean supportsPickItemPacket() {
+        return !legacyCombat();
+    }
+
+    public static boolean isSupportedHand(Hand hand) {
+        return hand == Hand.MAIN_HAND || !legacyCombat();
+    }
+
+    public static boolean canUseItemCooldown(ItemStack stack) {
+        return !legacyCombat() && stack != null && !stack.isEmpty();
+    }
+
+    /**
+     * 1.17-1.20.5 anticheats derive the use-item look from the movement packet
+     * that follows the interact packet; send a position-rotation packet first
+     * so the server sees the rotation the client used for the ray trace.
+     */
+    public static void sendPreUseMovement(ClientPlayNetHandler connection, ClientPlayerEntity player) {
+        if (!between1_17And1_20_5() || connection == null || player == null) {
+            return;
+        }
+
+        connection.sendPacket(new CPlayerPacket.PositionRotationPacket(
+                player.getPosX(),
+                player.getPosY(),
+                player.getPosZ(),
+                player.rotationYaw,
+                player.rotationPitch,
+                player.onGround));
+    }
+
+    public static BlockRayTraceResult adjustBlockHit(World world, BlockRayTraceResult hit) {
+        if (world == null || hit == null || !atOrOlderThan1_12_2()) {
+            return hit;
+        }
+
+        BlockState state = world.getBlockState(hit.getPos());
+        if (state.getBlock() instanceof SnowBlock && state.get(SnowBlock.LAYERS) == 1 && hit.getFace() != Direction.UP) {
+            return hit.withFace(Direction.UP);
+        }
+
+        return hit;
+    }
+
+    private static boolean extinguishFireBeforeBreak(World world, BlockPos pos) {
+        if (world == null || pos == null || !atOrOlderThan1_15_2()) {
+            return false;
+        }
+
+        BlockState state = world.getBlockState(pos);
+        if (!(state.getBlock() instanceof AbstractFireBlock)) {
+            return false;
+        }
+
+        return world.removeBlock(pos, false);
+    }
+
+    private static ActionResultType legacyPlacementResult(ActionResultType result, ItemStack stack, int originalCount) {
+        if (!atOrOlderThan1_12_2()) {
+            return result;
+        }
+
+        if (result == ActionResultType.CONSUME) {
+            return ActionResultType.SUCCESS;
+        }
+
+        if (result == ActionResultType.PASS && stack != null && stack.getCount() != originalCount) {
+            return ActionResultType.SUCCESS;
+        }
+
+        return result;
+    }
+
+    public static boolean isInventoryActionSupported(int slotId, int mouseButton, ClickType type) {
+        if (!legacyCombat()) {
+            return true;
+        }
+
+        if (slotId == 45) {
+            return false;
+        }
+
+        return type != ClickType.SWAP || mouseButton != 40;
     }
 }

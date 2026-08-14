@@ -7,17 +7,35 @@ import com.mentalfrostbyte.jello.event.impl.game.network.EventReceivePacket;
 import com.mentalfrostbyte.jello.event.impl.game.network.EventSendPacket;
 import com.mentalfrostbyte.jello.util.game.network.ServerConnectionErrorLogger;
 import com.mentalfrostbyte.jello.util.game.network.ViaNetworkDiagnostics;
+import com.mentalfrostbyte.jello.gui.base.JelloPortal;
+import com.viaversion.viabackwards.protocol.v1_19to1_18_2.Protocol1_19To1_18_2;
 import com.viaversion.viaversion.api.Via;
+import com.viaversion.viaversion.api.connection.ProtocolInfo;
+import com.viaversion.viaversion.api.connection.StorableObject;
 import com.viaversion.viaversion.api.connection.UserConnection;
+import com.viaversion.viaversion.api.minecraft.BlockPosition;
+import com.viaversion.viaversion.api.minecraft.item.Item;
+import com.viaversion.viaversion.api.protocol.AbstractProtocol;
+import com.viaversion.viaversion.api.protocol.Protocol;
+import com.viaversion.viaversion.api.protocol.ProtocolPipeline;
+import com.viaversion.viaversion.api.protocol.packet.Direction;
+import com.viaversion.viaversion.api.protocol.packet.PacketWrapper;
+import com.viaversion.viaversion.api.protocol.packet.State;
+import com.viaversion.viaversion.api.protocol.version.ProtocolVersion;
+import com.viaversion.viaversion.api.type.Types;
 import com.viaversion.viaversion.connection.UserConnectionImpl;
+import com.viaversion.viaversion.exception.InformativeException;
 import com.viaversion.viaversion.protocol.ProtocolPipelineImpl;
+import com.viaversion.viaversion.protocols.v1_16_1to1_16_2.packet.ServerboundPackets1_16_2;
+import com.viaversion.viaversion.protocols.v1_18_2to1_19.packet.ClientboundPackets1_19;
+import com.viaversion.viaversion.protocols.v1_18_2to1_19.packet.ServerboundPackets1_19;
 import de.florianmichael.vialoadingbase.ViaLoadingBase;
 import de.florianmichael.vialoadingbase.netty.event.CompressionReorderEvent;
 import de.florianmichael.viamcp.MCPVLBPipeline;
 import de.florianmichael.viamcp.ViaMCP;
-import de.florianmichael.viamcp.fixes.compat.InteractionSequenceStorage;
-import de.florianmichael.viamcp.fixes.compat.ServerboundInteractionAdapter;
 import io.netty.bootstrap.Bootstrap;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelException;
 import io.netty.channel.ChannelFuture;
@@ -28,6 +46,7 @@ import io.netty.channel.ChannelOption;
 import io.netty.channel.DefaultEventLoopGroup;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.SimpleChannelInboundHandler;
+import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.channel.epoll.Epoll;
 import io.netty.channel.epoll.EpollEventLoopGroup;
 import io.netty.channel.epoll.EpollSocketChannel;
@@ -44,17 +63,37 @@ import io.netty.util.AttributeKey;
 import io.netty.util.concurrent.Future;
 import io.netty.util.concurrent.GenericFutureListener;
 
+import java.lang.reflect.Field;
 import java.net.InetAddress;
 import java.net.SocketAddress;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Queue;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import javax.annotation.Nullable;
 import javax.crypto.Cipher;
 
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.PlayerController;
+import net.minecraft.inventory.container.ClickType;
+import net.minecraft.item.ItemStack;
+import net.minecraft.item.SwordItem;
 import net.minecraft.network.login.ServerLoginNetHandler;
 import net.minecraft.network.play.ServerPlayNetHandler;
+import net.minecraft.network.play.client.CAnimateHandPacket;
+import net.minecraft.network.play.client.CClickWindowPacket;
+import net.minecraft.network.play.client.CCreativeInventoryActionPacket;
+import net.minecraft.network.play.client.CHeldItemChangePacket;
+import net.minecraft.network.play.client.CPickItemPacket;
+import net.minecraft.network.play.client.CPlayerDiggingPacket;
+import net.minecraft.network.play.client.CPlayerTryUseItemOnBlockPacket;
+import net.minecraft.network.play.client.CPlayerTryUseItemPacket;
 import net.minecraft.network.play.server.SDisconnectPacket;
+import net.minecraft.util.Hand;
 import net.minecraft.util.LazyValue;
+import net.minecraft.util.math.BlockRayTraceResult;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.text.ITextComponent;
 import net.minecraft.util.text.TranslationTextComponent;
@@ -271,7 +310,7 @@ public class NetworkManager extends SimpleChannelInboundHandler<IPacket<?>> {
             return;
         }
 
-        if (ServerboundInteractionAdapter.trySend(this, packet)) {
+        if (this.trySendDirectInteraction(packet)) {
             return;
         }
 
@@ -294,7 +333,7 @@ public class NetworkManager extends SimpleChannelInboundHandler<IPacket<?>> {
             return;
         }
 
-        if (ServerboundInteractionAdapter.trySend(this, packetIn)) {
+        if (this.trySendDirectInteraction(packetIn)) {
             return;
         }
 
@@ -634,6 +673,623 @@ public class NetworkManager extends SimpleChannelInboundHandler<IPacket<?>> {
                 @Nullable GenericFutureListener<? extends Future<? super Void>> p_i48604_2_) {
             this.packet = p_i48604_1_;
             this.field_201049_b = p_i48604_2_;
+        }
+    }
+
+    // ====================== Via interaction compatibility ======================
+    //
+    // The sections below were consolidated from
+    // de.florianmichael.viamcp.fixes.compat (ServerboundInteractionAdapter,
+    // LocalInteractionState, LocalItemTranslator, InteractionSequenceStorage,
+    // ServerboundInteractionSequenceProtocol). They own the serverbound
+    // interaction path this network manager dispatches:
+    //   - drop/adapt packets the target protocol cannot express,
+    //   - on 1.19-1.21.1 targets send modern interaction packets directly
+    //     through the ViaBackwards 1.19 rung instead of the 1.16 wire format,
+    //   - remember the locally used item so the 1.8 HandItemProvider can hand
+    //     the real stack to ViaVersion,
+    //   - assign the modern per-connection block-interaction sequence.
+
+    private static final Logger INTERACTION_LOGGER = LogManager.getLogger("ViaMCP-Interactions");
+    private static final Logger ITEM_TRANSLATOR_LOGGER = LogManager.getLogger("ViaMCP-ItemTranslator");
+    private static final Logger SEQUENCE_LOGGER = LogManager.getLogger("ViaSequence");
+    private static final int MAX_PENDING_USES = 64;
+    private static final long ITEM_ERROR_LOG_INTERVAL_NANOS = TimeUnit.SECONDS.toNanos(30L);
+    private static final AtomicLong NEXT_ITEM_ERROR_LOG_NANOS = new AtomicLong();
+    private static final String SEQUENCE_DEBUG_PROPERTY = "sigma.via.sequenceDebug";
+    private static final long SEQUENCE_DEBUG_INTERVAL_NANOS = TimeUnit.MILLISECONDS.toNanos(50);
+    private static volatile boolean sequenceDebugChecked;
+    private static volatile boolean sequenceDebugEnabled;
+    private static volatile long lastSequenceDebugNanos;
+
+    /**
+     * Version gates for the interaction adapter. All reduce to the Via target
+     * version; {@code null} (no Via target) falls back to the native path.
+     */
+    private static boolean atOrOlderThan1_8() {
+        ProtocolVersion target = JelloPortal.getVersion();
+        return target != null && target.olderThanOrEqualTo(ProtocolVersion.v1_8);
+    }
+
+    private static boolean supportsPickItemPacket() {
+        return !atOrOlderThan1_8();
+    }
+
+    private static boolean between1_19And1_21_1() {
+        ProtocolVersion target = JelloPortal.getVersion();
+        return target != null
+                && target.newerThanOrEqualTo(ProtocolVersion.v1_19)
+                && target.olderThan(ProtocolVersion.v1_21_2);
+    }
+
+    /**
+     * Handles the serverbound interaction packets that must bypass the normal
+     * 1.16.4 wire format for the active Via target.
+     *
+     * @return {@code true} when the packet was consumed here and must not be
+     *         dispatched normally.
+     */
+    private boolean trySendDirectInteraction(IPacket<?> packet) {
+        if (shouldDropUnsupportedInteraction(packet)) {
+            return true;
+        }
+
+        if (!rememberLocalUse(packet)) {
+            return true;
+        }
+
+        if (!between1_19And1_21_1()) {
+            return false;
+        }
+
+        UserConnection viaConnection = this.getViaUserConnection();
+        if (viaConnection == null) {
+            return false;
+        }
+
+        try {
+            if (packet instanceof CHeldItemChangePacket heldItemChangePacket) {
+                sendHeldItemChange(viaConnection, heldItemChangePacket);
+                return true;
+            }
+
+            if (packet instanceof CPlayerTryUseItemPacket useItemPacket) {
+                sendUseItem(viaConnection, useItemPacket);
+                return true;
+            }
+
+            if (packet instanceof CPlayerTryUseItemOnBlockPacket useItemOnBlockPacket) {
+                sendUseItemOn(viaConnection, useItemOnBlockPacket);
+                return true;
+            }
+
+            if (packet instanceof CPlayerDiggingPacket diggingPacket) {
+                sendPlayerAction(viaConnection, diggingPacket);
+                return true;
+            }
+        } catch (Exception e) {
+            INTERACTION_LOGGER.warn("Failed to send direct interaction packet {}, falling back to normal Via path",
+                    packet.getClass().getSimpleName(), e);
+        }
+
+        return false;
+    }
+
+    private boolean rememberLocalUse(IPacket<?> packet) {
+        if (!atOrOlderThan1_8()) {
+            return true;
+        }
+
+        UserConnection connection = this.getViaUserConnection();
+        if (packet instanceof CPlayerTryUseItemPacket useItemPacket) {
+            return enqueueCurrentHand(connection, useItemPacket.getHand());
+        } else if (packet instanceof CPlayerTryUseItemOnBlockPacket useItemOnBlockPacket) {
+            return enqueueCurrentHand(connection, useItemOnBlockPacket.getHand());
+        }
+        return true;
+    }
+
+    private static boolean shouldDropUnsupportedInteraction(IPacket<?> packet) {
+        if (packet instanceof CPlayerTryUseItemPacket useItemPacket) {
+            return !PlayerController.isSupportedHand(useItemPacket.getHand());
+        }
+
+        if (packet instanceof CPlayerTryUseItemOnBlockPacket useItemOnBlockPacket) {
+            return !PlayerController.isSupportedHand(useItemOnBlockPacket.getHand());
+        }
+
+        if (packet instanceof CAnimateHandPacket animateHandPacket) {
+            return !PlayerController.isSupportedHand(animateHandPacket.getHand());
+        }
+
+        if (packet instanceof CPlayerDiggingPacket diggingPacket) {
+            return atOrOlderThan1_8()
+                    && diggingPacket.getAction() == CPlayerDiggingPacket.Action.SWAP_ITEM_WITH_OFFHAND;
+        }
+
+        if (packet instanceof CPickItemPacket) {
+            return !supportsPickItemPacket();
+        }
+
+        if (packet instanceof CClickWindowPacket clickWindowPacket) {
+            ClickType clickType = clickWindowPacket.getClickType();
+            return !PlayerController.isInventoryActionSupported(
+                    clickWindowPacket.getSlotId(),
+                    clickWindowPacket.getUsedButton(),
+                    clickType);
+        }
+
+        return false;
+    }
+
+    private static void sendHeldItemChange(UserConnection connection, CHeldItemChangePacket packet) throws Exception {
+        PacketWrapper wrapper = PacketWrapper.create(ServerboundPackets1_19.SET_CARRIED_ITEM, connection);
+        wrapper.write(Types.SHORT, (short) packet.getSlotId());
+        wrapper.sendToServer(Protocol1_19To1_18_2.class);
+    }
+
+    private static void sendUseItem(UserConnection connection, CPlayerTryUseItemPacket packet) throws Exception {
+        PacketWrapper wrapper = PacketWrapper.create(ServerboundPackets1_19.USE_ITEM, connection);
+        wrapper.write(Types.VAR_INT, packet.getHand().ordinal());
+        // Placeholder: InteractionSequenceProtocol assigns the real
+        // per-connection sequence right after the 1.19 rung. Writing it here
+        // would double-increment because that protocol also runs on this path.
+        wrapper.write(Types.VAR_INT, 0);
+        wrapper.sendToServer(Protocol1_19To1_18_2.class);
+    }
+
+    private static void sendUseItemOn(UserConnection connection, CPlayerTryUseItemOnBlockPacket packet) throws Exception {
+        BlockRayTraceResult hit = packet.func_218794_c();
+        PacketWrapper wrapper = PacketWrapper.create(ServerboundPackets1_19.USE_ITEM_ON, connection);
+        wrapper.write(Types.VAR_INT, packet.getHand().ordinal());
+        wrapper.write(Types.BLOCK_POSITION1_14,
+                new BlockPosition(hit.getPos().getX(), hit.getPos().getY(), hit.getPos().getZ()));
+        wrapper.write(Types.VAR_INT, hit.getFace().getIndex());
+        wrapper.write(Types.FLOAT, (float) (hit.getHitVec().x - hit.getPos().getX()));
+        wrapper.write(Types.FLOAT, (float) (hit.getHitVec().y - hit.getPos().getY()));
+        wrapper.write(Types.FLOAT, (float) (hit.getHitVec().z - hit.getPos().getZ()));
+        wrapper.write(Types.BOOLEAN, hit.isInside());
+        // Placeholder, see sendUseItem.
+        wrapper.write(Types.VAR_INT, 0);
+        wrapper.sendToServer(Protocol1_19To1_18_2.class);
+    }
+
+    private static void sendPlayerAction(UserConnection connection, CPlayerDiggingPacket packet) throws Exception {
+        PacketWrapper wrapper = PacketWrapper.create(ServerboundPackets1_19.PLAYER_ACTION, connection);
+        wrapper.write(Types.VAR_INT, packet.getAction().ordinal());
+        wrapper.write(Types.BLOCK_POSITION1_14,
+                new BlockPosition(packet.getPosition().getX(), packet.getPosition().getY(), packet.getPosition().getZ()));
+        wrapper.write(Types.UNSIGNED_BYTE, (short) packet.getFacing().getIndex());
+        // Placeholder, see sendUseItem. InteractionSequenceProtocol also applies
+        // the BadPacketsL rules (pos=0,0,0 / face=DOWN / sequence=0 for
+        // non-digging actions) on the exact same packet.
+        wrapper.write(Types.VAR_INT, 0);
+        wrapper.sendToServer(Protocol1_19To1_18_2.class);
+    }
+
+    /**
+     * Captures the item for one packet that will actually enter ViaVersion.
+     * The packet may be enqueued onto Netty after the render thread returns,
+     * so a single global "last item" slot is not a safe hand-off: each packet
+     * claims one queue slot and the HandItemProvider polls them in order.
+     */
+    public static boolean enqueueCurrentHand(UserConnection connection, Hand hand) {
+        Minecraft mc = Minecraft.getInstance();
+        if (connection == null || mc.player == null || hand == null) {
+            return false;
+        }
+
+        ItemStack snapshot = mc.player.getHeldItem(hand).copy();
+        PendingUsedItems pending = pendingItems(connection);
+        if (!pending.items.offer(snapshot)) {
+            // The oldest item belongs to the oldest packet already queued on
+            // Netty. Reject the newest packet instead of breaking FIFO pairing.
+            return false;
+        }
+
+        return true;
+    }
+
+    public static Item pollViaItem(UserConnection connection) {
+        if (connection == null) {
+            return null;
+        }
+
+        PendingUsedItems pending = connection.get(PendingUsedItems.class);
+        if (pending == null) {
+            return null;
+        }
+
+        ItemStack snapshot = pending.items.poll();
+        return toViaItem(snapshot);
+    }
+
+    private static PendingUsedItems pendingItems(UserConnection connection) {
+        if (connection == null) {
+            return null;
+        }
+
+        PendingUsedItems pending = connection.get(PendingUsedItems.class);
+        if (pending != null) {
+            return pending;
+        }
+
+        synchronized (connection) {
+            pending = connection.get(PendingUsedItems.class);
+            if (pending == null) {
+                pending = new PendingUsedItems();
+                connection.put(pending);
+            }
+            return pending;
+        }
+    }
+
+    private static final class PendingUsedItems implements StorableObject {
+        private final ArrayBlockingQueue<ItemStack> items = new ArrayBlockingQueue<>(MAX_PENDING_USES);
+    }
+
+    /**
+     * Converts a native 1.16.4 stack to the item representation expected by a
+     * 1.8 server. Numeric Minecraft registry ids are version-specific, so they
+     * must never be written directly as {@link Types#ITEM1_8}.
+     *
+     * <p>This mirrors ViaFabricPlus' item translator: serialize a harmless
+     * creative-slot packet, run it through a fresh dummy Via protocol pipeline,
+     * then read the target-version item back out.</p>
+     */
+    private static Item toViaItem(ItemStack stack) {
+        if (stack == null || stack.isEmpty()) {
+            return null;
+        }
+
+        // ViaBackwards replaces unknown 1.16 items with generic legacy
+        // placeholders (for example a netherite sword becomes item id 1).
+        // Such a stack cannot originate from a real 1.8 server, so do not
+        // misrepresent it as another item in the legacy use packet.
+        if (stack.getItem() instanceof SwordItem && !SwordItem.isLegacyBlockingSword(stack)) {
+            return null;
+        }
+
+        EmbeddedChannel channel = new EmbeddedChannel();
+        ByteBuf rawPacket = Unpooled.buffer();
+        try {
+            UserConnection connection = createDummyConnection(channel, ProtocolVersion.v1_8);
+            PacketBuffer packetBuffer = new PacketBuffer(rawPacket);
+            new CCreativeInventoryActionPacket(0, stack).writePacketData(packetBuffer);
+
+            PacketWrapper wrapper = PacketWrapper.create(
+                    ServerboundPackets1_16_2.SET_CREATIVE_MODE_SLOT,
+                    rawPacket,
+                    connection);
+            connection.getProtocolInfo().getPipeline().transform(Direction.SERVERBOUND, State.PLAY, wrapper);
+
+            wrapper.read(Types.SHORT);
+            Item translated = wrapper.read(Types.ITEM1_8);
+            // ITEM1_8 serializes null as absent (-1), while a non-null id 0 is
+            // present AIR and is explicitly rejected by Grim BadPacketsU.
+            return translated == null || translated.identifier() <= 0 ? null : translated.copy();
+        } catch (Throwable throwable) {
+            // Null is the safe failure mode: emitting a native registry id as a
+            // legacy item becomes AIR on the server and triggers Grim BadPacketsU.
+            logItemTranslationFailure(throwable);
+            return null;
+        } finally {
+            if (rawPacket.refCnt() > 0) {
+                rawPacket.release();
+            }
+            channel.finishAndReleaseAll();
+        }
+    }
+
+    private static void logItemTranslationFailure(Throwable throwable) {
+        long now = System.nanoTime();
+        long next = NEXT_ITEM_ERROR_LOG_NANOS.get();
+        if (now >= next && NEXT_ITEM_ERROR_LOG_NANOS.compareAndSet(next, now + ITEM_ERROR_LOG_INTERVAL_NANOS)) {
+            ITEM_TRANSLATOR_LOGGER.error("Failed to translate native item stack to a 1.8 ViaVersion item", throwable);
+        }
+    }
+
+    private static UserConnection createDummyConnection(EmbeddedChannel channel, ProtocolVersion targetVersion) {
+        UserConnection user = new UserConnectionImpl(channel, true);
+        ProtocolPipeline pipeline = new ProtocolPipelineImpl(user);
+        List<com.viaversion.viaversion.api.protocol.ProtocolPathEntry> path = Via.getManager()
+                .getProtocolManager()
+                .getProtocolPath(ProtocolVersion.v1_16_4, targetVersion);
+
+        if (path == null) {
+            throw new IllegalStateException("No ViaVersion protocol path from 1.16.4 to " + targetVersion);
+        }
+
+        for (com.viaversion.viaversion.api.protocol.ProtocolPathEntry entry : path) {
+            pipeline.add(entry.protocol());
+            entry.protocol().init(user);
+        }
+
+        ProtocolInfo info = user.getProtocolInfo();
+        info.setState(State.PLAY);
+        info.setProtocolVersion(ProtocolVersion.v1_16_4);
+        info.setServerProtocolVersion(targetVersion);
+        return user;
+    }
+
+    /**
+     * Per-{@link UserConnection} storage for the modern (1.19+) block-interaction
+     * sequence counter.
+     *
+     * <p>One counter is shared by USE_ITEM, USE_ITEM_ON and the digging
+     * START/STOP actions, exactly like the vanilla 1.19+ client. Non-digging
+     * PLAYER_ACTION packets must carry sequence 0 and must never consume the
+     * counter. A fresh {@link UserConnection} starts at 0, so the first
+     * incrementing packet after connect / world switch is sequence 1.
+     *
+     * <p>All mutation happens on the connection's Netty event loop, except the
+     * world-switch reset which is issued from the Minecraft main thread
+     * ({@code Minecraft.loadWorld}). The methods are therefore synchronized; the
+     * frequency is a few calls per second per connection, so the lock is
+     * uncontended and effectively free.
+     */
+    public static final class InteractionSequenceStorage implements StorableObject {
+        private int sequence;
+
+        public synchronized int next() {
+            if (sequence == Integer.MAX_VALUE) {
+                sequence = 0;
+            }
+            return ++sequence;
+        }
+
+        public synchronized int current() {
+            return sequence;
+        }
+
+        public synchronized void set(int value) {
+            sequence = Math.max(0, value);
+        }
+
+        public synchronized void reset() {
+            sequence = 0;
+        }
+
+        public static InteractionSequenceStorage of(UserConnection connection) {
+            InteractionSequenceStorage storage = connection.get(InteractionSequenceStorage.class);
+            if (storage != null) {
+                return storage;
+            }
+
+            synchronized (connection) {
+                storage = connection.get(InteractionSequenceStorage.class);
+                if (storage == null) {
+                    storage = new InteractionSequenceStorage();
+                    connection.put(storage);
+                }
+                return storage;
+            }
+        }
+    }
+
+    /**
+     * Assigns the modern block-interaction sequence to every serverbound
+     * USE_ITEM / USE_ITEM_ON / PLAYER_ACTION packet exactly once, after the
+     * ViaBackwards 1.18.2 -> 1.19 layer has created the sequence field (it always
+     * writes 0, which makes Grim flag {@code BadPacketsH expected=1, id=0}).
+     *
+     * <p>The protocol is inserted into the connection's protocol pipeline
+     * immediately after {@link Protocol1_19To1_18_2}, i.e. it sees the fixed
+     * 1.19 wire format for every target >= 1.19. All later rungs (1.19.1 ... 1.21.11)
+     * preserve the value.
+     *
+     * <p>It is also the single place that decides the per-action rules:
+     * <ul>
+     *   <li>START_DESTROY_BLOCK (0) and STOP_DESTROY_BLOCK (2): next(), keep pos/face</li>
+     *   <li>ABORT_DESTROY_BLOCK (1): 0, keep pos/face (Grim requires CANCELLED sequence 0)</li>
+     *   <li>RELEASE_USE_ITEM / DROP_ITEM / DROP_ALL_ITEMS / SWAP_ITEM_WITH_OFFHAND:
+     *       0 and pos=0,0,0 face=DOWN (BadPacketsL)</li>
+     * </ul>
+     */
+    public static final class InteractionSequenceProtocol
+            extends AbstractProtocol<ClientboundPackets1_19, ClientboundPackets1_19,
+                    ServerboundPackets1_19, ServerboundPackets1_19> {
+
+        /** PlayerAction ids, identical from 1.16 through 1.21.11 (PacketEvents DiggingAction). */
+        private static final int ACTION_START_DESTROY_BLOCK = 0;
+        private static final int ACTION_ABORT_DESTROY_BLOCK = 1;
+        private static final int ACTION_STOP_DESTROY_BLOCK = 2;
+        private static final int ACTION_DROP_ALL_ITEMS = 3;
+        private static final int ACTION_DROP_ITEM = 4;
+        private static final int ACTION_RELEASE_USE_ITEM = 5;
+        private static final int ACTION_SWAP_ITEM_WITH_OFFHAND = 6;
+
+        private static final BlockPosition ZERO = new BlockPosition(0, 0, 0);
+
+        public InteractionSequenceProtocol() {
+            super(ClientboundPackets1_19.class, ClientboundPackets1_19.class,
+                    ServerboundPackets1_19.class, ServerboundPackets1_19.class);
+        }
+
+        @Override
+        public void init(UserConnection connection) {
+            if (!connection.has(InteractionSequenceStorage.class)) {
+                connection.put(new InteractionSequenceStorage());
+            }
+        }
+
+        @Override
+        protected void registerPackets() {
+            registerServerbound(ServerboundPackets1_19.USE_ITEM, this::handleUseItem);
+            registerServerbound(ServerboundPackets1_19.USE_ITEM_ON, this::handleUseItemOn);
+            registerServerbound(ServerboundPackets1_19.PLAYER_ACTION, this::handlePlayerAction);
+        }
+
+        private void handleUseItem(PacketWrapper wrapper) throws InformativeException {
+            InteractionSequenceStorage storage = InteractionSequenceStorage.of(wrapper.user());
+            int before = storage.current();
+            int hand = wrapper.read(Types.VAR_INT);
+            wrapper.read(Types.VAR_INT); // ViaBackwards placeholder (always 0)
+            int sequence = storage.next();
+            wrapper.write(Types.VAR_INT, hand);
+            wrapper.write(Types.VAR_INT, sequence);
+            debug(wrapper, "USE_ITEM", -1, null, (short) -1, sequence, before, "translated");
+        }
+
+        private void handleUseItemOn(PacketWrapper wrapper) throws InformativeException {
+            InteractionSequenceStorage storage = InteractionSequenceStorage.of(wrapper.user());
+            int before = storage.current();
+            int hand = wrapper.read(Types.VAR_INT);
+            BlockPosition pos = wrapper.read(Types.BLOCK_POSITION1_14);
+            int face = wrapper.read(Types.VAR_INT);
+            float cursorX = wrapper.read(Types.FLOAT);
+            float cursorY = wrapper.read(Types.FLOAT);
+            float cursorZ = wrapper.read(Types.FLOAT);
+            boolean inside = wrapper.read(Types.BOOLEAN);
+            wrapper.read(Types.VAR_INT); // ViaBackwards placeholder (always 0)
+            int sequence = storage.next();
+            wrapper.write(Types.VAR_INT, hand);
+            wrapper.write(Types.BLOCK_POSITION1_14, pos);
+            wrapper.write(Types.VAR_INT, face);
+            wrapper.write(Types.FLOAT, cursorX);
+            wrapper.write(Types.FLOAT, cursorY);
+            wrapper.write(Types.FLOAT, cursorZ);
+            wrapper.write(Types.BOOLEAN, inside);
+            wrapper.write(Types.VAR_INT, sequence);
+            debug(wrapper, "USE_ITEM_ON", -1, pos, (short) face, sequence, before, "translated");
+        }
+
+        private void handlePlayerAction(PacketWrapper wrapper) throws InformativeException {
+            InteractionSequenceStorage storage = InteractionSequenceStorage.of(wrapper.user());
+            int before = storage.current();
+            int action = wrapper.read(Types.VAR_INT);
+            BlockPosition pos = wrapper.read(Types.BLOCK_POSITION1_14);
+            short face = wrapper.read(Types.UNSIGNED_BYTE);
+            wrapper.read(Types.VAR_INT); // ViaBackwards placeholder (always 0)
+
+            int sequence;
+            BlockPosition outPos;
+            short outFace;
+
+            switch (action) {
+                case ACTION_START_DESTROY_BLOCK, ACTION_STOP_DESTROY_BLOCK -> {
+                    sequence = storage.next();
+                    outPos = pos;
+                    outFace = face;
+                }
+                case ACTION_ABORT_DESTROY_BLOCK -> {
+                    // CANCELLED_DIGGING keeps the real position/face but MUST be sequence 0.
+                    sequence = 0;
+                    outPos = pos;
+                    outFace = face;
+                }
+                default -> {
+                    // RELEASE_USE_ITEM / DROP_ITEM / DROP_ALL_ITEMS / SWAP_ITEM_WITH_OFFHAND
+                    // (and any future non-digging action): BadPacketsL requires
+                    // pos=0,0,0, face=DOWN, sequence=0. Never touches the counter.
+                    sequence = 0;
+                    outPos = ZERO;
+                    outFace = 0;
+                }
+            }
+
+            wrapper.write(Types.VAR_INT, action);
+            wrapper.write(Types.BLOCK_POSITION1_14, outPos);
+            wrapper.write(Types.UNSIGNED_BYTE, outFace);
+            wrapper.write(Types.VAR_INT, sequence);
+            debug(wrapper, "PLAYER_ACTION", action, outPos, outFace, sequence, before, "translated");
+        }
+
+        private static void debug(PacketWrapper wrapper, String packet, int action,
+                                  BlockPosition pos, short face, int sequence, int before, String origin) {
+            if (!isDebugEnabled() || !rateLimited()) {
+                return;
+            }
+            SEQUENCE_LOGGER.info("[ViaSequence] connection={} packet={} action={} pos={} face={} "
+                            + "sequence={} counterBefore={} counterAfter={} stage={} thread={} origin={}",
+                    wrapper.user().getId(), packet,
+                    action < 0 ? "-" : action,
+                    pos == null ? "-" : pos.x() + "," + pos.y() + "," + pos.z(),
+                    face < 0 ? "-" : face,
+                    sequence, before, sequence,
+                    InteractionSequenceProtocol.class.getSimpleName(),
+                    Thread.currentThread().getName(), origin);
+        }
+
+        private static boolean isDebugEnabled() {
+            if (!sequenceDebugChecked) {
+                sequenceDebugEnabled = Boolean.parseBoolean(System.getProperty(SEQUENCE_DEBUG_PROPERTY, "false"));
+                sequenceDebugChecked = true;
+            }
+            return sequenceDebugEnabled;
+        }
+
+        private static synchronized boolean rateLimited() {
+            long now = System.nanoTime();
+            if (now - lastSequenceDebugNanos < SEQUENCE_DEBUG_INTERVAL_NANOS) {
+                return false;
+            }
+            lastSequenceDebugNanos = now;
+            return true;
+        }
+
+        /**
+         * Installs this protocol into the connection pipeline right after the
+         * ViaBackwards 1.19 rung. Must be called on the connection's event loop.
+         */
+        public static void ensureInstalled(UserConnection connection) {
+            if (connection == null || connection.getProtocolInfo() == null) {
+                return;
+            }
+            ProtocolPipeline pipeline = connection.getProtocolInfo().getPipeline();
+            if (pipeline == null) {
+                return;
+            }
+            if (pipeline.contains(InteractionSequenceProtocol.class)) {
+                return;
+            }
+            // Targets below 1.19 have no sequence field; nothing to fix.
+            if (!pipeline.contains(Protocol1_19To1_18_2.class)) {
+                return;
+            }
+
+            try {
+                InteractionSequenceProtocol protocol = new InteractionSequenceProtocol();
+                protocol.setClientVersion(ProtocolVersion.v1_19);
+                protocol.setServerVersion(ProtocolVersion.v1_19);
+                protocol.initialize();
+                pipeline.add(protocol);
+                moveAfter19Rung(pipeline, protocol);
+            } catch (Exception e) {
+                SEQUENCE_LOGGER.warn("Failed to install interaction sequence fix", e);
+            }
+        }
+
+        /**
+         * {@link ProtocolPipeline#add} always appends non-base protocols at the end
+         * of the serverbound list; the sequence handler needs to run right after
+         * the 1.19 rung so it sees the fixed 1.19 wire format. The list is only
+         * touched once, on the event loop, before any further packet transform.
+         */
+        private static void moveAfter19Rung(ProtocolPipeline pipeline, Protocol protocol) {
+            if (!(pipeline instanceof ProtocolPipelineImpl impl)) {
+                return;
+            }
+            try {
+                Field field = ProtocolPipelineImpl.class.getDeclaredField("protocolList");
+                field.setAccessible(true);
+                @SuppressWarnings("unchecked")
+                List<Protocol> list = (List<Protocol>) field.get(impl);
+                int anchor = -1;
+                for (int i = 0; i < list.size(); i++) {
+                    if (list.get(i).getClass() == Protocol1_19To1_18_2.class) {
+                        anchor = i;
+                        break;
+                    }
+                }
+                if (anchor < 0) {
+                    return;
+                }
+                list.remove(protocol);
+                list.add(anchor + 1, protocol);
+            } catch (ReflectiveOperationException e) {
+                SEQUENCE_LOGGER.warn("Failed to reposition interaction sequence protocol", e);
+            }
         }
     }
 }

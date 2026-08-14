@@ -3,7 +3,8 @@ package net.minecraft.block;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
-import de.florianmichael.viamcp.fixes.compat.InteractionProtocol;
+import com.mentalfrostbyte.jello.gui.base.JelloPortal;
+import com.viaversion.viaversion.api.protocol.version.ProtocolVersion;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
@@ -586,7 +587,7 @@ public class RedstoneWireBlock extends Block
 
     public ActionResultType onBlockActivated(BlockState state, World worldIn, BlockPos pos, PlayerEntity player, Hand handIn, BlockRayTraceResult hit)
     {
-        if (InteractionProtocol.atOrOlderThan1_15_2())
+        if (JelloPortal.getVersion().olderThanOrEqualTo(ProtocolVersion.v1_15_2))
         {
             return ActionResultType.PASS;
         }

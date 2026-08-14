@@ -1,6 +1,7 @@
 package net.minecraft.block;
 
-import de.florianmichael.viamcp.fixes.compat.InteractionProtocol;
+import com.mentalfrostbyte.jello.gui.base.JelloPortal;
+import com.viaversion.viaversion.api.protocol.version.ProtocolVersion;
 import net.minecraft.fluid.Fluid;
 import net.minecraft.fluid.FluidState;
 import net.minecraft.fluid.Fluids;
@@ -13,7 +14,7 @@ public interface IWaterLoggable extends IBucketPickupHandler, ILiquidContainer
 {
 default boolean canContainFluid(IBlockReader worldIn, BlockPos pos, BlockState state, Fluid fluidIn)
     {
-        if (!InteractionProtocol.supportsWaterlogging())
+        if (!supportsWaterlogging())
         {
             return false;
         }
@@ -23,7 +24,7 @@ default boolean canContainFluid(IBlockReader worldIn, BlockPos pos, BlockState s
 
 default boolean receiveFluid(IWorld worldIn, BlockPos pos, BlockState state, FluidState fluidStateIn)
     {
-        if (!InteractionProtocol.supportsWaterlogging())
+        if (!supportsWaterlogging())
         {
             return false;
         }
@@ -55,5 +56,11 @@ default Fluid pickupFluid(IWorld worldIn, BlockPos pos, BlockState state)
         {
             return Fluids.EMPTY;
         }
+    }
+
+    /** 1.13+ is the first version with waterlogged blocks. */
+    static boolean supportsWaterlogging() {
+        ProtocolVersion target = JelloPortal.getVersion();
+        return target != null && target.newerThan(ProtocolVersion.v1_12_2);
     }
 }

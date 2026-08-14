@@ -12,8 +12,6 @@ import com.mentalfrostbyte.jello.event.impl.player.movement.EventSlowDown;
 import com.mentalfrostbyte.jello.event.impl.player.movement.EventMotion;
 import com.mentalfrostbyte.jello.gui.base.JelloPortal;
 import com.viaversion.viaversion.api.protocol.version.ProtocolVersion;
-import de.florianmichael.viamcp.fixes.PacketFixFor1_21Plus;
-import de.florianmichael.viamcp.fixes.PacketFixFor1_21_5Plus;
 import net.minecraft.block.BlockState;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.audio.*;
@@ -27,6 +25,7 @@ import net.minecraft.entity.IJumpingMount;
 import net.minecraft.entity.MoverType;
 import net.minecraft.entity.Pose;
 import net.minecraft.entity.SneakMovementDebug;
+import net.minecraft.entity.ModernMovementPhysics;
 import net.minecraft.entity.item.BoatEntity;
 import net.minecraft.entity.item.minecart.AbstractMinecartEntity;
 import net.minecraft.inventory.EquipmentSlotType;
@@ -228,7 +227,7 @@ public class ClientPlayerEntity extends AbstractClientPlayerEntity {
     }
 
     public void pushOutOfBlocks(double x, double y, double z) {
-        if (PacketFixFor1_21Plus.shouldUseGrimVanillaMovement()) {
+        if (ModernMovementPhysics.shouldUseGrimVanillaMovement()) {
             super.pushOutOfBlocks(x, y, z);
             return;
         }
@@ -364,7 +363,7 @@ public class ClientPlayerEntity extends AbstractClientPlayerEntity {
      * Called to update the entity's position/logic.
      */
     public void tick() {
-        if (!PacketFixFor1_21Plus.shouldUseGrimVanillaMovement()) {
+        if (!ModernMovementPhysics.shouldUseGrimVanillaMovement()) {
             EventUpdate updateEvent = new EventUpdate();
             EventBus.call(updateEvent);
 
@@ -387,7 +386,7 @@ public class ClientPlayerEntity extends AbstractClientPlayerEntity {
                 Entity entity = this.getLowestRidingEntity();
                 if (entity != this && entity.canPassengerSteer()) {
                     this.connection.sendPacket(new CMoveVehiclePacket(entity));
-                    if (PacketFixFor1_21Plus.shouldUseVanilla1_21MovementPhysics()) {
+                    if (ModernMovementPhysics.shouldUseVanilla1_21MovementPhysics()) {
                         this.sendSprintingPacket();
                     }
                 }
@@ -423,7 +422,7 @@ public class ClientPlayerEntity extends AbstractClientPlayerEntity {
 
     private void sendMovementPackets() {
         AxisAlignedBB bounds = this.getBoundingBox();
-        boolean vanillaMovement = PacketFixFor1_21Plus.shouldUseGrimVanillaMovement();
+        boolean vanillaMovement = ModernMovementPhysics.shouldUseGrimVanillaMovement();
         EventMotion event = null;
         double x = this.getPosX();
         double y = bounds.minY;
@@ -497,12 +496,12 @@ public class ClientPlayerEntity extends AbstractClientPlayerEntity {
 
             final double minimumMovement = targetVersion.newerThanOrEqualTo(ProtocolVersion.v1_18_2) ? 4.0E-8D
                     : 9.0E-4D;
-            final int positionPacketInterval = PacketFixFor1_21Plus.getPositionPacketInterval(isLegacy);
+            final int positionPacketInterval = ModernMovementPhysics.getPositionPacketInterval(isLegacy);
 
             boolean posMoved = deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ > minimumMovement
                     || this.positionUpdateTicks >= positionPacketInterval;
             boolean rotMoved = deltaYaw != 0.0D || deltaPitch != 0.0D;
-            boolean horizontalCollisionChanged = PacketFixFor1_21Plus.shouldUseMovementFlags()
+            boolean horizontalCollisionChanged = ModernMovementPhysics.shouldUseMovementFlags()
                     && this.prevHorizontalCollision != horizontalCollision;
             boolean sentRotation = false;
 
@@ -1043,7 +1042,7 @@ public class ClientPlayerEntity extends AbstractClientPlayerEntity {
             this.sprintToggleTimer = 0;
         }
 
-        boolean vanillaMovement = PacketFixFor1_21Plus.shouldUseGrimVanillaMovement();
+        boolean vanillaMovement = ModernMovementPhysics.shouldUseGrimVanillaMovement();
 
         if (this.isHandActive() && !this.isPassenger()) {
             if (vanillaMovement) {
@@ -1118,7 +1117,7 @@ public class ClientPlayerEntity extends AbstractClientPlayerEntity {
         // (canStartSprinting / shouldStopRunSprinting) pass abilities.flying, so a waist-deep
         // player cannot run-sprint on 1.21.10+. The swim path passes true and is handled by the
         // isSwimming() branches below, which never consult this flag.
-        boolean canWaterSprint = PacketFixFor1_21_5Plus.isShallowWaterSprintAllowed(false)
+        boolean canWaterSprint = ModernMovementPhysics.isShallowWaterSprintAllowed(false)
                 || !this.isInWater() || this.canSwim();
 
         if (!this.isSprinting() && canWaterSprint && this.isUsingSwimmingAnimation() && flag4
@@ -1141,7 +1140,7 @@ public class ClientPlayerEntity extends AbstractClientPlayerEntity {
                     : this.collidedHorizontally;
             boolean flag6 = flag5 || hardHorizontalCollision || !canWaterSprint;
 
-            if (PacketFixFor1_21_5Plus.isInSprintStopBand_1_21_5_to_1_21_7()) {
+            if (ModernMovementPhysics.isInSprintStopBand_1_21_5_to_1_21_7()) {
                 // ViaFP shouldStopRunSprinting for 1.21.5-1.21.7:
                 // mobility/passenger/forward/food/(HC&&!minor)/(inWater&&!underWater)
                 // Swim path keeps the 1.21.5 rework (blindness + water presence).
@@ -1155,7 +1154,7 @@ public class ClientPlayerEntity extends AbstractClientPlayerEntity {
                         || hardHorizontalCollision || !canWaterSprint) {
                     this.setSprinting(false);
                 }
-            } else if (PacketFixFor1_21_5Plus.isInModernSprintStopBand()) {
+            } else if (ModernMovementPhysics.isInModernSprintStopBand()) {
                 // Modern LocalPlayer.shouldStopRunSprinting (>1.21.7):
                 // !isSprintingPossible(flying) || !forward || (HC && !minor)
                 // isSprintingPossible(false): !passenger (no vehicle sprint here) && food
@@ -1383,7 +1382,7 @@ public class ClientPlayerEntity extends AbstractClientPlayerEntity {
     }
 
     public void move(MoverType typeIn, Vector3d pos) {
-        if (PacketFixFor1_21Plus.shouldUseGrimVanillaMovement()) {
+        if (ModernMovementPhysics.shouldUseGrimVanillaMovement()) {
             double d0 = this.getPosX();
             double d1 = this.getPosZ();
             super.move(typeIn, pos);

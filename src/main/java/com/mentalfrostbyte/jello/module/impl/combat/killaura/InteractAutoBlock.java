@@ -9,9 +9,10 @@ import com.mentalfrostbyte.jello.module.impl.combat.killaura.sorters.*;
 import com.mentalfrostbyte.jello.module.impl.player.Blink;
 import com.mentalfrostbyte.jello.util.game.world.EntityUtil;
 import com.mentalfrostbyte.jello.util.game.player.constructor.Rotation;
-import de.florianmichael.viamcp.fixes.compat.InteractionProtocol;
-import de.florianmichael.viamcp.fixes.compat.InteractionSemantics;
+import com.mentalfrostbyte.jello.gui.base.JelloPortal;
+import com.viaversion.viaversion.api.protocol.version.ProtocolVersion;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.PlayerController;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.item.ArmorStandEntity;
@@ -118,7 +119,7 @@ public class InteractAutoBlock {
             return false;
         }
 
-        InteractionSemantics.sendPreUseMovement(this.mc.getConnection(), this.mc.player);
+        PlayerController.sendPreUseMovement(this.mc.getConnection(), this.mc.player);
         this.mc.getConnection().sendPacket(new CPlayerTryUseItemPacket(hand));
         this.predictionBlockHand = hand;
         if (this.mc.player.getHeldItem(hand).getItem() instanceof ShieldItem) {
@@ -150,12 +151,12 @@ public class InteractAutoBlock {
 
     public boolean usesLegacySwordUseItemPath() {
         return this.mc.player != null
-                && InteractionProtocol.atOrOlderThan1_8()
+                && JelloPortal.getVersion().olderThanOrEqualTo(ProtocolVersion.v1_8)
                 && this.mc.player.getHeldItemMainhand().getItem() instanceof SwordItem;
     }
 
     private Hand getPredictionBlockHand() {
-        if (this.mc.player == null || InteractionProtocol.atOrOlderThan1_8()) {
+        if (this.mc.player == null || JelloPortal.getVersion().olderThanOrEqualTo(ProtocolVersion.v1_8)) {
             return null;
         }
 

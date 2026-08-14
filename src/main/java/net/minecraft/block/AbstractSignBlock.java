@@ -1,6 +1,7 @@
 package net.minecraft.block;
 
-import de.florianmichael.viamcp.fixes.compat.InteractionProtocol;
+import com.mentalfrostbyte.jello.gui.base.JelloPortal;
+import com.viaversion.viaversion.api.protocol.version.ProtocolVersion;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.fluid.FluidState;
 import net.minecraft.fluid.Fluids;
@@ -69,7 +70,7 @@ public abstract class AbstractSignBlock extends ContainerBlock implements IWater
 
     public ActionResultType onBlockActivated(BlockState state, World worldIn, BlockPos pos, PlayerEntity player, Hand handIn, BlockRayTraceResult hit)
     {
-        if (InteractionProtocol.atOrOlderThan1_14_4())
+        if (JelloPortal.getVersion().olderThanOrEqualTo(ProtocolVersion.v1_14_4))
         {
             return worldIn.isRemote ? ActionResultType.SUCCESS : ActionResultType.PASS;
         }

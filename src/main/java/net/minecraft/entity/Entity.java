@@ -9,8 +9,6 @@ import com.mentalfrostbyte.jello.event.impl.player.movement.EventStep;
 import com.mentalfrostbyte.jello.util.game.world.BoundingBox;
 import com.viaversion.viaversion.api.protocol.version.ProtocolVersion;
 import de.florianmichael.vialoadingbase.ViaLoadingBase;
-import de.florianmichael.viamcp.fixes.PacketFixFor1_21Plus;
-import de.florianmichael.viamcp.fixes.PacketFixFor1_21_5Plus;
 import it.unimi.dsi.fastutil.objects.Object2DoubleArrayMap;
 import it.unimi.dsi.fastutil.objects.Object2DoubleMap;
 
@@ -929,7 +927,7 @@ public abstract class Entity implements INameable, ICommandSource {
 
             // ViaFP rewinds modern candidate-height step with olderThanOrEqualTo(v1_20_5).
             // Upgrade path inverts that: modern step only when newerThan(v1_20_5).
-            if (PacketFixFor1_21_5Plus.shouldUseModernStepCollision()) {
+            if (ModernMovementPhysics.shouldUseModernStepCollision()) {
                 // 1.20.5+ uses the modern step-up: every candidate height collected from
                 // nearby collision shapes is tried instead of only the full step height.
                 // The candidate-height step algorithm was introduced in MC 1.20.5, so the
@@ -1045,7 +1043,7 @@ public abstract class Entity implements INameable, ICommandSource {
         double stepY = stepUp + stepDown;
 
         // MODIFICATION: keep the EventStep hook working on the legacy path
-        if (!PacketFixFor1_21Plus.shouldUseGrimVanillaMovement() && this instanceof ClientPlayerEntity
+        if (!ModernMovementPhysics.shouldUseGrimVanillaMovement() && this instanceof ClientPlayerEntity
                 && stepY != 0.0D) {
             EventStep event = new EventStep(stepY, adjusted);
             EventBus.call(event);
@@ -1087,7 +1085,7 @@ private Vector3d getAllowedMovementModernStep(Vector3d vec, Vector3d adjusted, A
     ReuseableStream<VoxelShape> stepHits = new ReuseableStream<>(colliders.stream());
 
     // MODIFICATION: keep the EventStep hook working on the modern path
-    if (!PacketFixFor1_21Plus.shouldUseGrimVanillaMovement() && this instanceof ClientPlayerEntity) {
+    if (!ModernMovementPhysics.shouldUseGrimVanillaMovement() && this instanceof ClientPlayerEntity) {
         EventStep event = new EventStep((double) this.stepHeight, adjusted);
         EventBus.call(event);
 
@@ -1096,7 +1094,7 @@ private Vector3d getAllowedMovementModernStep(Vector3d vec, Vector3d adjusted, A
         }
     }
 
-    float[] candidateHeights = PacketFixFor1_21_5Plus.collectCandidateStepUpHeights(
+    float[] candidateHeights = ModernMovementPhysics.collectCandidateStepUpHeights(
             steppedBox, colliders, this.stepHeight, (float) adjusted.y);
 
     for (float candidate : candidateHeights) {
@@ -1566,7 +1564,7 @@ private Vector3d getAllowedMovementModernStep(Vector3d vec, Vector3d adjusted, A
     }
 
     public void moveRelative(float friction, Vector3d relative) {
-        if (this instanceof ClientPlayerEntity && !PacketFixFor1_21Plus.shouldUseGrimVanillaMovement()) {
+        if (this instanceof ClientPlayerEntity && !ModernMovementPhysics.shouldUseGrimVanillaMovement()) {
             EventMoveFlying event = new EventMoveFlying(this.rotationYaw, (float) relative.x, (float) relative.z,
                     friction);
             EventBus.call(event);

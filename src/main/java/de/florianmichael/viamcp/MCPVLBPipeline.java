@@ -5,10 +5,10 @@ import com.mentalfrostbyte.jello.util.game.world.ExtendedHeightBlockUpdateHandle
 import com.mentalfrostbyte.jello.util.game.network.ServerboundPacketDebugHandler;
 import com.mentalfrostbyte.jello.util.game.network.UseItemRotationDebug;
 import com.viaversion.viaversion.api.connection.UserConnection;
-import de.florianmichael.viamcp.fixes.PacketFixFor1_21Plus;
 import de.florianmichael.vialoadingbase.netty.event.CompressionReorderEvent;
 import de.florianmichael.vialoadingbase.netty.VLBPipeline;
 import io.netty.channel.ChannelHandlerContext;
+import net.minecraft.entity.ModernMovementPhysics;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -108,7 +108,7 @@ public class MCPVLBPipeline extends VLBPipeline {
     }
 
     private void installMovementFlagFixHandler(ChannelHandlerContext ctx) {
-        if (ctx.pipeline().get(PacketFixFor1_21Plus.HANDLER_NAME) != null) {
+        if (ctx.pipeline().get(ModernMovementPhysics.HANDLER_NAME) != null) {
             return;
         }
 
@@ -123,8 +123,8 @@ public class MCPVLBPipeline extends VLBPipeline {
                 ? VIA_ENCODER_HANDLER_NAME
                 : "prepender";
         if (ctx.pipeline().get(anchor) != null) {
-            ctx.pipeline().addAfter(anchor, PacketFixFor1_21Plus.HANDLER_NAME,
-                    PacketFixFor1_21Plus.createServerboundMovementFlagHandler(getUser()));
+            ctx.pipeline().addAfter(anchor, ModernMovementPhysics.HANDLER_NAME,
+                    ModernMovementPhysics.createServerboundMovementFlagHandler(getUser()));
             logPipeline(ctx, "movement flag handler installed after " + anchor);
         }
     }
@@ -155,8 +155,8 @@ public class MCPVLBPipeline extends VLBPipeline {
     }
 
     private void moveMovementFlagFixHandler(ChannelHandlerContext ctx) {
-        if (ctx.pipeline().get(PacketFixFor1_21Plus.HANDLER_NAME) != null) {
-            ctx.pipeline().remove(PacketFixFor1_21Plus.HANDLER_NAME);
+        if (ctx.pipeline().get(ModernMovementPhysics.HANDLER_NAME) != null) {
+            ctx.pipeline().remove(ModernMovementPhysics.HANDLER_NAME);
         }
 
         installMovementFlagFixHandler(ctx);

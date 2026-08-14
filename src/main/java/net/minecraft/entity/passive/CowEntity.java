@@ -1,6 +1,7 @@
 package net.minecraft.entity.passive;
 
-import de.florianmichael.viamcp.fixes.compat.InteractionProtocol;
+import com.mentalfrostbyte.jello.gui.base.JelloPortal;
+import com.viaversion.viaversion.api.protocol.version.ProtocolVersion;
 import net.minecraft.block.BlockState;
 import net.minecraft.entity.AgeableEntity;
 import net.minecraft.entity.EntitySize;
@@ -85,7 +86,7 @@ public class CowEntity extends AnimalEntity
 
     public ActionResultType func_230254_b_(PlayerEntity p_230254_1_, Hand p_230254_2_)
     {
-        if (InteractionProtocol.atOrOlderThan1_15_2() && p_230254_1_.abilities.isCreativeMode)
+        if (JelloPortal.getVersion().olderThanOrEqualTo(ProtocolVersion.v1_15_2) && p_230254_1_.abilities.isCreativeMode)
         {
             return super.func_230254_b_(p_230254_1_, p_230254_2_);
         }

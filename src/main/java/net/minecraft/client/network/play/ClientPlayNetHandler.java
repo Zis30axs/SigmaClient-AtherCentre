@@ -17,7 +17,7 @@ import com.mojang.authlib.GameProfile;
 import com.mojang.brigadier.CommandDispatcher;
 import com.viaversion.viaversion.api.protocol.version.ProtocolVersion;
 import de.florianmichael.vialoadingbase.ViaLoadingBase;
-import de.florianmichael.viamcp.fixes.IncompleteTagsFix;
+import de.florianmichael.viamcp.ViaMCP;
 import io.netty.buffer.Unpooled;
 import java.io.File;
 import java.io.UnsupportedEncodingException;
@@ -29,6 +29,7 @@ import java.util.ArrayList;
 import java.util.ArrayDeque;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -40,6 +41,7 @@ import java.util.concurrent.CompletableFuture;
 import javax.annotation.Nullable;
 import net.minecraft.advancements.Advancement;
 import net.minecraft.block.Block;
+import net.minecraft.fluid.Fluid;
 import net.minecraft.client.ClientBrandRetriever;
 import net.minecraft.client.GameSettings;
 import net.minecraft.client.Minecraft;
@@ -140,6 +142,7 @@ import net.minecraft.inventory.container.Container;
 import net.minecraft.inventory.container.HorseInventoryContainer;
 import net.minecraft.inventory.container.MerchantContainer;
 import net.minecraft.item.FilledMapItem;
+import net.minecraft.item.Item;
 import net.minecraft.item.ItemGroup;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
@@ -245,6 +248,9 @@ import net.minecraft.pathfinding.Path;
 import net.minecraft.potion.Effect;
 import net.minecraft.potion.EffectInstance;
 import net.minecraft.resources.IPackNameDecorator;
+import net.minecraft.resources.ResourcePackType;
+import net.minecraft.resources.SimpleReloadableResourceManager;
+import net.minecraft.resources.VanillaPack;
 import net.minecraft.scoreboard.Score;
 import net.minecraft.scoreboard.ScoreCriteria;
 import net.minecraft.scoreboard.ScoreObjective;
@@ -254,6 +260,14 @@ import net.minecraft.scoreboard.Team;
 import net.minecraft.stats.Stat;
 import net.minecraft.stats.StatisticsManager;
 import net.minecraft.tags.ITagCollectionSupplier;
+import net.minecraft.tags.BlockTags;
+import net.minecraft.tags.EntityTypeTags;
+import net.minecraft.tags.FluidTags;
+import net.minecraft.tags.ITag;
+import net.minecraft.tags.ITagCollection;
+import net.minecraft.tags.ItemTags;
+import net.minecraft.tags.Tag;
+import net.minecraft.tags.TagCollectionReader;
 import net.minecraft.tags.TagRegistryManager;
 import net.minecraft.tileentity.BannerTileEntity;
 import net.minecraft.tileentity.BeaconTileEntity;
@@ -1796,9 +1810,9 @@ public class ClientPlayNetHandler implements IClientPlayNetHandler {
         // 1.20.3/4 (and other non-native Via targets) can deliver incomplete UPDATE_TAGS
         // after the configuration phase. Fill missing required tags from local vanilla
         // data and continue instead of instant-kicking with missing_tags.
-        if (!multimap.isEmpty() && IncompleteTagsFix.shouldRelaxValidation()) {
+        if (!multimap.isEmpty() && shouldRelaxTagValidation()) {
             LOGGER.warn("Incomplete server tags under Via, repairing instead of disconnecting. Missing: {}", (Object) multimap);
-            itagcollectionsupplier = IncompleteTagsFix.repair(itagcollectionsupplier, multimap);
+            itagcollectionsupplier = repairIncompleteTags(itagcollectionsupplier, multimap);
             multimap = TagRegistryManager.validateTags(itagcollectionsupplier);
         }
 
@@ -2814,5 +2828,150 @@ public class ClientPlayNetHandler implements IClientPlayNetHandler {
                     posX, posY, posZ, face, hitX, hitY, hitZ, selectedSlot,
                     placementYaw, placementPitch);
         }
+    }
+
+    // ====================== Via incomplete-tags repair ======================
+    //
+    // ViaFabricPlus-style registry/tag validation bypass, previously
+    // de.florianmichael.viamcp.fixes.IncompleteTagsFix. On modern targets
+    // (especially 1.20.2+ configuration-phase servers such as 1.20.3/4),
+    // ViaBackwards can deliver an empty or incomplete UPDATE_TAGS payload to
+    // this 1.16.5 client. Vanilla then disconnects with
+    // multiplayer.disconnect.missing_tags. ViaFabricPlus solves the
+    // modern-client side by skipping hard registry/tag validation errors and
+    // returning empty holder sets; here we fill missing required tags from
+    // local vanilla datapack data and let the join continue.
+
+    private static final Object TAG_REPAIR_LOCK = new Object();
+    private static volatile ITagCollectionSupplier localVanillaTags;
+    private static volatile boolean localTagLoadAttempted;
+
+    /**
+     * True when Via is translating away from the native 1.16.5 protocol.
+     * Matches the ViaFabricPlus idea of relaxing registry validation on
+     * translated links.
+     */
+    private static boolean shouldRelaxTagValidation() {
+        ViaLoadingBase loadingBase = ViaLoadingBase.getInstance();
+        if (loadingBase == null) {
+            return false;
+        }
+        ProtocolVersion target = loadingBase.getTargetVersion();
+        if (target == null) {
+            return false;
+        }
+        return target.getVersion() != ViaMCP.NATIVE_VERSION;
+    }
+
+    /**
+     * Repair an incomplete server tag set for Via connections.
+     * Server-provided entries win; missing required tags are filled from local
+     * vanilla data (or empty tags if local data cannot be loaded).
+     */
+    private static ITagCollectionSupplier repairIncompleteTags(ITagCollectionSupplier serverTags,
+                                                               Multimap<ResourceLocation, ResourceLocation> missing) {
+        if (serverTags == null) {
+            serverTags = ITagCollectionSupplier.TAG_COLLECTION_SUPPLIER;
+        }
+        if (missing == null || missing.isEmpty()) {
+            return serverTags;
+        }
+
+        ITagCollectionSupplier local = getLocalVanillaTags();
+        ITagCollection<Block> blocks = mergeTags(serverTags.getBlockTags(), local != null ? local.getBlockTags() : null, BlockTags.getAllTags());
+        ITagCollection<Item> items = mergeTags(serverTags.getItemTags(), local != null ? local.getItemTags() : null, ItemTags.getAllTags());
+        ITagCollection<Fluid> fluids = mergeTags(serverTags.getFluidTags(), local != null ? local.getFluidTags() : null, FluidTags.getAllTags());
+        ITagCollection<EntityType<?>> entities = mergeTags(serverTags.getEntityTypeTags(), local != null ? local.getEntityTypeTags() : null, EntityTypeTags.getAllTags());
+
+        LOGGER.warn("Repaired incomplete Via tags (target={}): filled {} missing registries/entries from local vanilla data",
+                safeViaTargetName(), missing.size());
+        return ITagCollectionSupplier.getTagCollectionSupplier(blocks, items, fluids, entities);
+    }
+
+    private static String safeViaTargetName() {
+        try {
+            ViaLoadingBase loadingBase = ViaLoadingBase.getInstance();
+            if (loadingBase != null && loadingBase.getTargetVersion() != null) {
+                return loadingBase.getTargetVersion().getName();
+            }
+        } catch (Throwable ignored) {
+        }
+        return "unknown";
+    }
+
+    private static <T> ITagCollection<T> mergeTags(ITagCollection<T> server,
+                                                   ITagCollection<T> local,
+                                                   List<? extends ITag.INamedTag<T>> required) {
+        Map<ResourceLocation, ITag<T>> map = new HashMap<>();
+        if (local != null) {
+            map.putAll(local.getIDTagMap());
+        }
+        if (server != null) {
+            // Server/Via values override local fallbacks when present.
+            map.putAll(server.getIDTagMap());
+        }
+        if (required != null) {
+            for (ITag.INamedTag<T> named : required) {
+                map.putIfAbsent(named.getName(), Tag.getEmptyTag());
+            }
+        }
+        return ITagCollection.getTagCollectionFromMap(map);
+    }
+
+    private static ITagCollectionSupplier getLocalVanillaTags() {
+        ITagCollectionSupplier cached = localVanillaTags;
+        if (cached != null || localTagLoadAttempted) {
+            return cached;
+        }
+        synchronized (TAG_REPAIR_LOCK) {
+            if (localVanillaTags != null || localTagLoadAttempted) {
+                return localVanillaTags;
+            }
+            localTagLoadAttempted = true;
+            try {
+                localVanillaTags = loadLocalVanillaTags();
+                if (localVanillaTags != null) {
+                    LOGGER.info("Loaded local vanilla tags as Via incomplete-tag fallback");
+                }
+            } catch (Throwable t) {
+                LOGGER.warn("Failed to load local vanilla tags for Via fallback", t);
+                localVanillaTags = null;
+            }
+            return localVanillaTags;
+        }
+    }
+
+    private static ITagCollectionSupplier loadLocalVanillaTags() {
+        SimpleReloadableResourceManager resourceManager = new SimpleReloadableResourceManager(ResourcePackType.SERVER_DATA);
+        resourceManager.addResourcePack(new VanillaPack("minecraft"));
+
+        TagCollectionReader<Block> blocks = new TagCollectionReader<>(Registry.BLOCK::getOptional, "tags/blocks", "block");
+        TagCollectionReader<Item> items = new TagCollectionReader<>(Registry.ITEM::getOptional, "tags/items", "item");
+        TagCollectionReader<Fluid> fluids = new TagCollectionReader<>(Registry.FLUID::getOptional, "tags/fluids", "fluid");
+        TagCollectionReader<EntityType<?>> entities = new TagCollectionReader<>(Registry.ENTITY_TYPE::getOptional, "tags/entity_types", "entity_type");
+
+        // Run async suppliers inline so we can build synchronously on first use.
+        Map<ResourceLocation, ITag.Builder> blockBuilders = joinInline(blocks.readTagsFromManager(resourceManager, Runnable::run));
+        Map<ResourceLocation, ITag.Builder> itemBuilders = joinInline(items.readTagsFromManager(resourceManager, Runnable::run));
+        Map<ResourceLocation, ITag.Builder> fluidBuilders = joinInline(fluids.readTagsFromManager(resourceManager, Runnable::run));
+        Map<ResourceLocation, ITag.Builder> entityBuilders = joinInline(entities.readTagsFromManager(resourceManager, Runnable::run));
+
+        // Defensive copies: buildTagCollectionFromMap mutates/removes from the builder map.
+        ITagCollection<Block> blockTags = blocks.buildTagCollectionFromMap(copyBuilders(blockBuilders));
+        ITagCollection<Item> itemTags = items.buildTagCollectionFromMap(copyBuilders(itemBuilders));
+        ITagCollection<Fluid> fluidTags = fluids.buildTagCollectionFromMap(copyBuilders(fluidBuilders));
+        ITagCollection<EntityType<?>> entityTags = entities.buildTagCollectionFromMap(copyBuilders(entityBuilders));
+
+        return ITagCollectionSupplier.getTagCollectionSupplier(blockTags, itemTags, fluidTags, entityTags);
+    }
+
+    private static Map<ResourceLocation, ITag.Builder> copyBuilders(Map<ResourceLocation, ITag.Builder> source) {
+        return Maps.newHashMap(source);
+    }
+
+    private static <T> T joinInline(CompletableFuture<T> future) {
+        // With Runnable::run as executor, supplyAsync usually completes inline;
+        // join() still covers any residual async edge cases.
+        return future.join();
     }
 }

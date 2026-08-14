@@ -1,7 +1,8 @@
 package net.minecraft.block;
 
 import com.google.common.collect.Maps;
-import de.florianmichael.viamcp.fixes.compat.InteractionProtocol;
+import com.mentalfrostbyte.jello.gui.base.JelloPortal;
+import com.viaversion.viaversion.api.protocol.version.ProtocolVersion;
 import java.util.Map;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.BlockItem;
@@ -56,7 +57,7 @@ public class FlowerPotBlock extends Block
         boolean flag = block == Blocks.AIR;
         boolean flag1 = this.flower == Blocks.AIR;
 
-        if (InteractionProtocol.atOrOlderThan1_10() && !flag1 && flag)
+        if (JelloPortal.getVersion().olderThanOrEqualTo(ProtocolVersion.v1_10) && !flag1 && flag)
         {
             return ActionResultType.CONSUME;
         }

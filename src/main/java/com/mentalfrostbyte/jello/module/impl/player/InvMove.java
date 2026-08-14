@@ -26,7 +26,8 @@ import com.mentalfrostbyte.jello.module.Module;
 import com.mentalfrostbyte.jello.module.data.ModuleCategory;
 import com.mentalfrostbyte.jello.module.settings.impl.BooleanSetting;
 import com.mentalfrostbyte.jello.module.settings.impl.ModeSetting;
-import de.florianmichael.viamcp.fixes.compat.InteractionProtocol;
+import com.mentalfrostbyte.jello.gui.base.JelloPortal;
+import com.viaversion.viaversion.api.protocol.version.ProtocolVersion;
 import net.minecraft.client.gui.screen.AbstractCommandBlockScreen;
 import net.minecraft.client.gui.screen.ChatScreen;
 import net.minecraft.client.gui.screen.EditBookScreen;
@@ -352,7 +353,7 @@ public class InvMove extends Module {
      * anything to withhold.
      */
     private static boolean needsStatusPacket() {
-        return InteractionProtocol.needsOpenInventoryStatusPacket();
+        return JelloPortal.getVersion().olderThanOrEqualTo(ProtocolVersion.v1_8);
     }
 
     @Override

@@ -1,7 +1,8 @@
 package net.minecraft.inventory.container;
 
 import com.mojang.datafixers.util.Pair;
-import de.florianmichael.viamcp.fixes.compat.InteractionProtocol;
+import com.mentalfrostbyte.jello.gui.base.JelloPortal;
+import com.viaversion.viaversion.api.protocol.version.ProtocolVersion;
 import net.minecraft.enchantment.EnchantmentHelper;
 import net.minecraft.entity.MobEntity;
 import net.minecraft.entity.player.PlayerEntity;
@@ -88,12 +89,12 @@ public class PlayerContainer extends RecipeBookContainer<CraftingInventory>
         {
             public boolean isItemValid(ItemStack stack)
             {
-                return InteractionProtocol.supportsOffhand();
+                return PlayerContainer.supportsOffhand();
             }
 
             public boolean canTakeStack(PlayerEntity playerIn)
             {
-                return InteractionProtocol.supportsOffhand() && super.canTakeStack(playerIn);
+                return PlayerContainer.supportsOffhand() && super.canTakeStack(playerIn);
             }
 
             public Pair<ResourceLocation, ResourceLocation> getBackground()
@@ -103,9 +104,15 @@ public class PlayerContainer extends RecipeBookContainer<CraftingInventory>
 
             public boolean isEnabled()
             {
-                return InteractionProtocol.supportsOffhand();
+                return PlayerContainer.supportsOffhand();
             }
         });
+    }
+
+    /** 1.9+ is the first version with an offhand slot. */
+    private static boolean supportsOffhand() {
+        ProtocolVersion target = JelloPortal.getVersion();
+        return target != null && target.newerThan(ProtocolVersion.v1_8);
     }
 
     public void fillStackedContents(RecipeItemHelper itemHelperIn)

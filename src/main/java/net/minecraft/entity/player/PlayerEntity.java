@@ -11,8 +11,6 @@ import com.mentalfrostbyte.jello.module.impl.player.AutoSprint;
 import com.mojang.authlib.GameProfile;
 import com.mojang.datafixers.util.Either;
 import com.viaversion.viaversion.api.protocol.version.ProtocolVersion;
-import de.florianmichael.viamcp.fixes.PacketFixFor1_21Plus;
-import de.florianmichael.viamcp.fixes.compat.InteractionProtocol;
 import net.minecraft.advancements.CriteriaTriggers;
 import net.minecraft.block.BedBlock;
 import net.minecraft.block.Block;
@@ -1040,7 +1038,7 @@ public abstract class PlayerEntity extends LivingEntity {
     protected Vector3d maybeBackOffFromEdge(Vector3d vec, MoverType mover) {
         // MODIFICATION START: Send on edge `SafeWalkEvent`
         EventSafeWalk event = new EventSafeWalk(true);
-        if (!PacketFixFor1_21Plus.shouldUseGrimVanillaMovement()) {
+        if (!ModernMovementPhysics.shouldUseGrimVanillaMovement()) {
             EventBus.call(event);
         }
         // MODIFICATION END
@@ -1053,7 +1051,7 @@ public abstract class PlayerEntity extends LivingEntity {
         int iterationsZ = 0;
         int iterationsXZ = 0;
         if (safeWalkSituation
-                || (!PacketFixFor1_21Plus.shouldUseVanilla1_21MovementPhysics() || !(vec.y > 0.0D))
+                || (!ModernMovementPhysics.shouldUseVanilla1_21MovementPhysics() || !(vec.y > 0.0D))
                 && !this.abilities.isFlying && (mover == MoverType.SELF || mover == MoverType.PLAYER)
                 && this.isStayingOnGroundSurface() && this.isAboveGround(f)) {
             double d0 = vec.x;
@@ -1227,11 +1225,11 @@ public abstract class PlayerEntity extends LivingEntity {
                     boolean flag5 = targetEntity.attackEntityFrom(DamageSource.causePlayerDamage(this), f);
 
                     if (flag5) {
-                        boolean applyExtraKnockback = PacketFixFor1_21Plus.shouldApplyAttackSelfSlow(flag1, enchantKnockback);
+                        boolean applyExtraKnockback = ModernMovementPhysics.shouldApplyAttackSelfSlow(flag1, enchantKnockback);
                         EventKeepSprint eventKeepSprint = new EventKeepSprint(applyExtraKnockback);
                         EventBus.call(eventKeepSprint);
                         if (eventKeepSprint.greater) {
-                            float knockbackStrength = PacketFixFor1_21Plus.attackKnockbackStrength(flag1, i);
+                            float knockbackStrength = ModernMovementPhysics.attackKnockbackStrength(flag1, i);
                             if (targetEntity instanceof LivingEntity) {
                                 ((LivingEntity) targetEntity).applyKnockback(knockbackStrength, (double) MathHelper.sin(rotationYaw * ((float) Math.PI / 180F)), (double) (-MathHelper.cos(rotationYaw * ((float) Math.PI / 180F))));
                             } else {
@@ -1545,7 +1543,7 @@ public abstract class PlayerEntity extends LivingEntity {
 
         if (this.abilities.isFlying && !this.isPassenger()) {
             double d5 = this.getMotion().y;
-            if (PacketFixFor1_21Plus.shouldUseVanilla1_21MovementPhysics()) {
+            if (ModernMovementPhysics.shouldUseVanilla1_21MovementPhysics()) {
                 super.travel(travelVector);
             } else {
                 float f = this.jumpMovementFactor;
@@ -1578,7 +1576,7 @@ public abstract class PlayerEntity extends LivingEntity {
     protected float getOffGroundSpeed() {
         // 1.19.4+ evaluates the airborne speed live from the current sprint state
         // instead of the jumpMovementFactor field updated at the end of the last tick
-        if (PacketFixFor1_21Plus.shouldUseVanilla1_21MovementPhysics()
+        if (ModernMovementPhysics.shouldUseVanilla1_21MovementPhysics()
                 || JelloPortal.getVersion().newerThanOrEqualTo(ProtocolVersion.v1_19_4)) {
             if (this.abilities.isFlying && !this.isPassenger()) {
                 return this.isSprinting() ? this.abilities.getFlySpeed() * 2.0F : this.abilities.getFlySpeed();
@@ -2196,8 +2194,17 @@ public abstract class PlayerEntity extends LivingEntity {
         this.dataManager.set(RIGHT_SHOULDER_ENTITY, tag);
     }
 
+    /**
+     * 1.9+ uses the attack cooldown and item cooldowns; only 1.8 targets run
+     * the instant legacy combat without them.
+     */
+    private static boolean usesAttackAndItemCooldowns() {
+        ProtocolVersion target = JelloPortal.getVersion();
+        return target == null || target.newerThan(ProtocolVersion.v1_8);
+    }
+
     public float getCooldownPeriod() {
-        if (!InteractionProtocol.usesAttackAndItemCooldowns()) {
+        if (!usesAttackAndItemCooldowns()) {
             return 1.0F;
         }
 
@@ -2208,7 +2215,7 @@ public abstract class PlayerEntity extends LivingEntity {
      * Returns the percentage of attack power available based on the cooldown (zero to one).
      */
     public float getCooledAttackStrength(float adjustTicks) {
-        if (!InteractionProtocol.usesAttackAndItemCooldowns()) {
+        if (!usesAttackAndItemCooldowns()) {
             return 1.0F;
         }
 
@@ -2216,7 +2223,7 @@ public abstract class PlayerEntity extends LivingEntity {
     }
 
     public void resetCooldown() {
-        if (!InteractionProtocol.usesAttackAndItemCooldowns()) {
+        if (!usesAttackAndItemCooldowns()) {
             return;
         }
 

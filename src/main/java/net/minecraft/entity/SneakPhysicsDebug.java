@@ -2,7 +2,6 @@ package net.minecraft.entity;
 
 import com.mentalfrostbyte.jello.gui.base.JelloPortal;
 import com.viaversion.viaversion.api.protocol.version.ProtocolVersion;
-import de.florianmichael.viamcp.fixes.PacketFixFor1_21Plus;
 import net.minecraft.block.Block;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.entity.player.ClientPlayerEntity;
@@ -126,7 +125,7 @@ public final class SneakPhysicsDebug {
         box = fmt(bb.minX) + "," + fmt(bb.minY) + "," + fmt(bb.minZ)
                 + "->" + fmt(bb.maxX) + "," + fmt(bb.maxY) + "," + fmt(bb.maxZ);
         ProtocolVersion target = JelloPortal.getVersion();
-        modernGate = PacketFixFor1_21Plus.shouldUseVanilla1_21MovementPhysics();
+        modernGate = ModernMovementPhysics.shouldUseVanilla1_21MovementPhysics();
         behavior = target == null ? "?" : target.olderThanOrEqualTo(ProtocolVersion.v1_20_3) ? "LEGACY"
                 : target.newerThanOrEqualTo(ProtocolVersion.v1_21_5) ? "POST_1_21_5" : "PRE_1_21_5";
 

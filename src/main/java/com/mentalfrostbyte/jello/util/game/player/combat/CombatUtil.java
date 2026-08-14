@@ -1,7 +1,8 @@
 package com.mentalfrostbyte.jello.util.game.player.combat;
 
+import com.mentalfrostbyte.jello.gui.base.JelloPortal;
 import com.mentalfrostbyte.jello.util.game.MinecraftUtil;
-import de.florianmichael.viamcp.fixes.compat.InteractionProtocol;
+import com.viaversion.viaversion.api.protocol.version.ProtocolVersion;
 import net.minecraft.client.Minecraft;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.network.play.client.CPlayerDiggingPacket;
@@ -42,7 +43,7 @@ public class CombatUtil implements MinecraftUtil {
         }
 
         mc.getConnection().sendPacket(new CPlayerTryUseItemPacket(Hand.MAIN_HAND));
-        if (!InteractionProtocol.atOrOlderThan1_8()) {
+        if (!JelloPortal.getVersion().olderThanOrEqualTo(ProtocolVersion.v1_8)) {
             mc.getConnection().sendPacket(new CPlayerTryUseItemPacket(Hand.OFF_HAND));
         }
         return true;

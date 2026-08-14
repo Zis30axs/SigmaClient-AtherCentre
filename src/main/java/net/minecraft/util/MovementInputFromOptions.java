@@ -4,10 +4,10 @@ import com.mentalfrostbyte.jello.event.impl.player.movement.EventMoveInput;
 import com.mentalfrostbyte.jello.event.impl.player.movement.EventMoveButton;
 import com.mentalfrostbyte.jello.gui.base.JelloPortal;
 import com.viaversion.viaversion.api.protocol.version.ProtocolVersion;
-import de.florianmichael.viamcp.fixes.PacketFixFor1_21Plus;
 import net.minecraft.client.GameSettings;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.entity.player.ClientPlayerEntity;
+import net.minecraft.entity.ModernMovementPhysics;
 import net.minecraft.entity.SneakMovementDebug;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.CompoundNBT;
@@ -77,7 +77,7 @@ public class MovementInputFromOptions extends MovementInput {
     }
 
     public void tickMovement(boolean forcedDown) {
-        if (PacketFixFor1_21Plus.shouldUseGrimVanillaMovement()) {
+        if (ModernMovementPhysics.shouldUseGrimVanillaMovement()) {
             tickVanillaMovement(forcedDown);
             return;
         }
@@ -133,7 +133,7 @@ public class MovementInputFromOptions extends MovementInput {
         // Upgrade path (low-to-high): on 1.21.5+ keep modern KeyboardInput normalize
         // BEFORE sneak/item slowdown. Skipping it leaves raw (1,1)*0.3 into square
         // compensation and makes sneak-diagonal ~sqrt(2) too fast (Grim Simulation).
-        PacketFixFor1_21Plus.normalizeRaw1_21_5MovementInput(this);
+        ModernMovementPhysics.normalizeRaw1_21_5MovementInput(this);
         SneakMovementDebug.captureNormalizedInput(this.moveForward, this.moveStrafe);
 
         if (shouldApplySneakSlowdown(forcedDown, this.sneaking)) {
@@ -188,7 +188,7 @@ public class MovementInputFromOptions extends MovementInput {
         SneakMovementDebug.captureRawInput(this.moveForward, this.moveStrafe);
 
         // Same 1.21.5+ KeyboardInput diagonal normalize as tickMovement (before sneak).
-        PacketFixFor1_21Plus.normalizeRaw1_21_5MovementInput(this);
+        ModernMovementPhysics.normalizeRaw1_21_5MovementInput(this);
         SneakMovementDebug.captureNormalizedInput(this.moveForward, this.moveStrafe);
 
         if (shouldApplySneakSlowdown(forcedDown, this.sneaking)) {

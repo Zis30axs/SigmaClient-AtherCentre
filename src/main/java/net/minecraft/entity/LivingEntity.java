@@ -27,8 +27,6 @@ import javax.annotation.Nullable;
 
 import com.viaversion.viaversion.api.protocol.version.ProtocolVersion;
 import de.florianmichael.vialoadingbase.ViaLoadingBase;
-import de.florianmichael.viamcp.fixes.PacketFixFor1_21Plus;
-import de.florianmichael.viamcp.fixes.PacketFixFor1_21_5Plus;
 import net.minecraft.advancements.CriteriaTriggers;
 import net.minecraft.block.BedBlock;
 import net.minecraft.block.Block;
@@ -2080,7 +2078,7 @@ public abstract class LivingEntity extends Entity {
         Vector3d vector3d = this.getMotion();
         float yaw = this.rotationYaw;
 
-        if (!PacketFixFor1_21Plus.shouldUseGrimVanillaMovement()) {
+        if (!ModernMovementPhysics.shouldUseGrimVanillaMovement()) {
             final EventJump jumpEvent = new EventJump(vector3d, yaw);
             EventBus.call(jumpEvent);
             vector3d = jumpEvent.vector;
@@ -2146,7 +2144,7 @@ public abstract class LivingEntity extends Entity {
         this.travelSwimHopCandidate = false;
 
         if (this.isServerWorld() || this.canPassengerSteer()) {
-            final boolean use1_21Movement = PacketFixFor1_21Plus.shouldUseVanilla1_21MovementPhysics();
+            final boolean use1_21Movement = ModernMovementPhysics.shouldUseVanilla1_21MovementPhysics();
             final ProtocolVersion targetVersion = ViaLoadingBase.getInstance().getTargetVersion();
             final boolean legacyWaterMovement = targetVersion.olderThanOrEqualTo(ProtocolVersion.v1_12_2);
             double d0 = this.getFinalGravity();
@@ -2401,7 +2399,7 @@ public abstract class LivingEntity extends Entity {
     }
 
     protected float getOffGroundSpeed() {
-        if (PacketFixFor1_21Plus.shouldUseVanilla1_21MovementPhysics()) {
+        if (ModernMovementPhysics.shouldUseVanilla1_21MovementPhysics()) {
             return this.getControllingPassenger() instanceof PlayerEntity
                     ? this.getAIMoveSpeed() * 0.1F
                     : this.isSprinting() ? 0.025999999F : 0.02F;
@@ -2739,7 +2737,7 @@ public abstract class LivingEntity extends Entity {
 
         Vector3d vector3d = this.getMotion();
         // 1.21.5+: combined horizontal threshold (x*x+z*z < 9e-6); older: per-axis 0.003/0.005
-        this.setMotion(PacketFixFor1_21_5Plus.applyMovementThreshold(vector3d, this instanceof PlayerEntity));
+        this.setMotion(ModernMovementPhysics.applyMovementThreshold(vector3d, this instanceof PlayerEntity));
         this.world.getProfiler().startSection("ai");
 
         if (this.isMovementBlocked()) {
@@ -2796,7 +2794,7 @@ public abstract class LivingEntity extends Entity {
         double debugStartY = modernDebug ? this.getPosY() : 0.0D;
         double debugStartZ = modernDebug ? this.getPosZ() : 0.0D;
         Vector3d debugMotionBefore = modernDebug ? this.getMotion() : null;
-        PacketFixFor1_21_5Plus.applyTravelInputFactors(this);
+        ModernMovementPhysics.applyTravelInputFactors(this);
         this.updateElytra();
         AxisAlignedBB axisalignedbb = this.getBoundingBox();
         this.travel(new Vector3d((double) this.moveStrafing, (double) this.moveVertical, (double) this.moveForward));

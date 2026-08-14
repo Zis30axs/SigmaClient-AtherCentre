@@ -2,7 +2,8 @@ package net.minecraft.block;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableList.Builder;
-import de.florianmichael.viamcp.fixes.compat.InteractionProtocol;
+import com.mentalfrostbyte.jello.gui.base.JelloPortal;
+import com.viaversion.viaversion.api.protocol.version.ProtocolVersion;
 import java.util.Optional;
 import java.util.Random;
 import net.minecraft.entity.Entity;
@@ -78,7 +79,7 @@ public class RespawnAnchorBlock extends Block
                 this.triggerExplosion(state, worldIn, pos);
             }
 
-            return InteractionProtocol.atOrOlderThan1_21_9()
+            return JelloPortal.getVersion().olderThanOrEqualTo(ProtocolVersion.v1_21_9)
                     ? ActionResultType.SUCCESS
                     : ActionResultType.func_233537_a_(worldIn.isRemote);
         }
