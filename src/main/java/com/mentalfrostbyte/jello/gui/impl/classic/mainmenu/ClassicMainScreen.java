@@ -83,8 +83,8 @@ public class ClassicMainScreen extends Screen {
                         font
                 )
         );
-        String FuckJuziBUjiji = Minecraft.getInstance().getSession().getUsername();
-        this.addToList(new Text(this, "Hello", 10, this.getHeightA() - 55, 114, 140, new ColorHelper(ClientColors.LIGHT_GREYISH_BLUE.getColor()), "Hello," + FuckJuziBUjiji, font));
+        String fxsfdpfucku = Minecraft.getInstance().getSession().getUsername();
+        this.addToList(new Text(this, "Hello", 10, this.getHeightA() - 55, 114, 140, new ColorHelper(ClientColors.LIGHT_GREYISH_BLUE.getColor()), "Hello," + fxsfdpfucku, font));
         this.addToList(
                 new Text(
                         this, "Latest", 10, this.getHeightA() - 31, 114, 140, new ColorHelper(ClientColors.LIGHT_GREYISH_BLUE.getColor()), "You are using the latest version", font

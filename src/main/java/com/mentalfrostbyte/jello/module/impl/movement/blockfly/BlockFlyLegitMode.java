@@ -7,7 +7,7 @@ import com.mentalfrostbyte.jello.event.impl.player.EventRunTicks;
 import com.mentalfrostbyte.jello.event.impl.player.action.EventPlace;
 import com.mentalfrostbyte.jello.event.impl.player.action.EventUpdatePlayerActionState;
 import com.mentalfrostbyte.jello.event.impl.player.movement.EventMove;
-import com.mentalfrostbyte.jello.util.game.player.rotation.RotationCore;
+import com.mentalfrostbyte.jello.managers.RotationManager;
 import com.mentalfrostbyte.jello.module.Module;
 import com.mentalfrostbyte.jello.module.data.ModuleCategory;
 import com.mentalfrostbyte.jello.module.impl.movement.BlockFly;
@@ -1012,7 +1012,7 @@ public final class BlockFlyLegitMode extends Module {
         if (!Float.isFinite(yaw) || !Float.isFinite(pitch)) {
             return;
         }
-        RotationCore.setRotations(yaw, pitch);
+        RotationManager.setRotations(yaw, pitch);
     }
 
     private AimOffset updateZitter(PlacementKey key, long now) {

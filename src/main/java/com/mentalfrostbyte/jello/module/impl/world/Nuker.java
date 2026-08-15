@@ -3,6 +3,7 @@ package com.mentalfrostbyte.jello.module.impl.world;
 import com.mentalfrostbyte.jello.event.impl.game.action.EventKeyPress;
 import com.mentalfrostbyte.jello.event.impl.game.render.EventRender3D;
 import com.mentalfrostbyte.jello.event.impl.player.EventUpdate;
+import com.mentalfrostbyte.jello.managers.RotationManager;
 import com.mentalfrostbyte.jello.module.Module;
 import com.mentalfrostbyte.jello.module.data.ModuleCategory;
 import com.mentalfrostbyte.jello.module.settings.impl.*;
@@ -72,13 +73,13 @@ public class Nuker extends Module {
                     }
 
                     float[] rotations = BlockUtil.getBlockBestRotation(targetPos);
-                    RotationCore.setRotations(rotations[0],rotations[1]);
+                    RotationManager.setRotations(rotations[0],rotations[1]);
                     EventKeyPress keyPress = new EventKeyPress(0, false, this.targetPos);
                     EventBus.call(keyPress);
                 } else {
                     this.targetPos = this.blocksToDestroy.get(0);
                     float[] var6 = BlockUtil.getBlockBestRotation(targetPos);
-                    RotationCore.setRotations(var6[0],var6[1]);
+                    RotationManager.setRotations(var6[0],var6[1]);
                     EventKeyPress keyPress = new EventKeyPress(0, false, this.targetPos);
                     EventBus.call(keyPress);
                 }
