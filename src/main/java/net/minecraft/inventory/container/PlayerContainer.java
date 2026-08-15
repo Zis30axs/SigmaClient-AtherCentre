@@ -89,12 +89,12 @@ public class PlayerContainer extends RecipeBookContainer<CraftingInventory>
         {
             public boolean isItemValid(ItemStack stack)
             {
-                return PlayerContainer.supportsOffhand();
+                return JelloPortal.getVersion().newerThan(ProtocolVersion.v1_8);
             }
 
             public boolean canTakeStack(PlayerEntity playerIn)
             {
-                return PlayerContainer.supportsOffhand() && super.canTakeStack(playerIn);
+                return JelloPortal.getVersion().newerThan(ProtocolVersion.v1_8) && super.canTakeStack(playerIn);
             }
 
             public Pair<ResourceLocation, ResourceLocation> getBackground()
@@ -104,15 +104,9 @@ public class PlayerContainer extends RecipeBookContainer<CraftingInventory>
 
             public boolean isEnabled()
             {
-                return PlayerContainer.supportsOffhand();
+                return JelloPortal.getVersion().newerThan(ProtocolVersion.v1_8);
             }
         });
-    }
-
-    /** 1.9+ is the first version with an offhand slot. */
-    private static boolean supportsOffhand() {
-        ProtocolVersion target = JelloPortal.getVersion();
-        return target != null && target.newerThan(ProtocolVersion.v1_8);
     }
 
     public void fillStackedContents(RecipeItemHelper itemHelperIn)

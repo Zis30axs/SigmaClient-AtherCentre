@@ -14,7 +14,7 @@ public interface IWaterLoggable extends IBucketPickupHandler, ILiquidContainer
 {
 default boolean canContainFluid(IBlockReader worldIn, BlockPos pos, BlockState state, Fluid fluidIn)
     {
-        if (!supportsWaterlogging())
+        if (!JelloPortal.getVersion().newerThan(ProtocolVersion.v1_12_2))
         {
             return false;
         }
@@ -24,7 +24,7 @@ default boolean canContainFluid(IBlockReader worldIn, BlockPos pos, BlockState s
 
 default boolean receiveFluid(IWorld worldIn, BlockPos pos, BlockState state, FluidState fluidStateIn)
     {
-        if (!supportsWaterlogging())
+        if (!JelloPortal.getVersion().newerThan(ProtocolVersion.v1_12_2))
         {
             return false;
         }
@@ -58,9 +58,4 @@ default Fluid pickupFluid(IWorld worldIn, BlockPos pos, BlockState state)
         }
     }
 
-    /** 1.13+ is the first version with waterlogged blocks. */
-    static boolean supportsWaterlogging() {
-        ProtocolVersion target = JelloPortal.getVersion();
-        return target != null && target.newerThan(ProtocolVersion.v1_12_2);
-    }
 }

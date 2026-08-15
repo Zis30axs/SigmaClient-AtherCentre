@@ -226,7 +226,7 @@ public class PlayerController
             this.isHittingBlock = false;
             this.curBlockDamageMP = 0.0F;
             this.mc.world.sendBlockBreakProgress(this.mc.player.getEntityId(), this.currentBlock, -1);
-            if (usesAttackAndItemCooldowns()) {
+            if (!JelloPortal.getVersion().olderThanOrEqualTo(ProtocolVersion.v1_8)) {
                 this.mc.player.resetCooldown();
             }
         }
@@ -503,7 +503,7 @@ public class PlayerController
         if (this.currentGameType != GameType.SPECTATOR)
         {
             playerIn.attackTargetEntityWithCurrentItem(targetEntity);
-            if (usesAttackAndItemCooldowns()) {
+            if (!JelloPortal.getVersion().olderThanOrEqualTo(ProtocolVersion.v1_8)) {
                 playerIn.resetCooldown();
             }
         }
@@ -734,7 +734,7 @@ public class PlayerController
 
     public void pickItem(int index)
     {
-        if (!supportsPickItemPacket()) {
+        if (JelloPortal.getVersion().olderThanOrEqualTo(ProtocolVersion.v1_8)) {
             return;
         }
 
@@ -772,50 +772,17 @@ public class PlayerController
         }
     }
 
-    // ====================== Via interaction semantics ======================
+    // ====================== Via interaction compatibility ======================
     //
-    // Target-version gates and packet adjustments for the interaction path,
-    // previously split across de.florianmichael.viamcp.fixes.compat
-    // (InteractionProtocol / InteractionSemantics). Everything here reduces to
-    // the Via target version read through JelloPortal.
-
-    /** 1.8 is the only target with instant legacy combat (no cooldowns, no offhand). */
-    private static boolean legacyCombat() {
-        ProtocolVersion target = JelloPortal.getVersion();
-        return target != null && target.olderThanOrEqualTo(ProtocolVersion.v1_8);
-    }
-
-    private static boolean atOrOlderThan1_12_2() {
-        ProtocolVersion target = JelloPortal.getVersion();
-        return target != null && target.olderThanOrEqualTo(ProtocolVersion.v1_12_2);
-    }
-
-    private static boolean atOrOlderThan1_15_2() {
-        ProtocolVersion target = JelloPortal.getVersion();
-        return target != null && target.olderThanOrEqualTo(ProtocolVersion.v1_15_2);
-    }
-
-    private static boolean between1_17And1_20_5() {
-        ProtocolVersion target = JelloPortal.getVersion();
-        return target != null
-                && target.newerThanOrEqualTo(ProtocolVersion.v1_17)
-                && target.olderThanOrEqualTo(ProtocolVersion.v1_20_5);
-    }
-
-    private static boolean usesAttackAndItemCooldowns() {
-        return !legacyCombat();
-    }
-
-    private static boolean supportsPickItemPacket() {
-        return !legacyCombat();
-    }
+    // Interaction-path gates for older Via targets. All version checks read
+    // JelloPortal.getVersion() directly.
 
     public static boolean isSupportedHand(Hand hand) {
-        return hand == Hand.MAIN_HAND || !legacyCombat();
+        return hand == Hand.MAIN_HAND || !JelloPortal.getVersion().olderThanOrEqualTo(ProtocolVersion.v1_8);
     }
 
-    public static boolean canUseItemCooldown(ItemStack stack) {
-        return !legacyCombat() && stack != null && !stack.isEmpty();
+    private static boolean canUseItemCooldown(ItemStack stack) {
+        return !JelloPortal.getVersion().olderThanOrEqualTo(ProtocolVersion.v1_8) && stack != null && !stack.isEmpty();
     }
 
     /**
@@ -824,7 +791,14 @@ public class PlayerController
      * so the server sees the rotation the client used for the ray trace.
      */
     public static void sendPreUseMovement(ClientPlayNetHandler connection, ClientPlayerEntity player) {
-        if (!between1_17And1_20_5() || connection == null || player == null) {
+        if (connection == null || player == null) {
+            return;
+        }
+
+        ProtocolVersion target = JelloPortal.getVersion();
+        if (target == null
+                || !target.newerThanOrEqualTo(ProtocolVersion.v1_17)
+                || !target.olderThanOrEqualTo(ProtocolVersion.v1_20_5)) {
             return;
         }
 
@@ -837,8 +811,8 @@ public class PlayerController
                 player.onGround));
     }
 
-    public static BlockRayTraceResult adjustBlockHit(World world, BlockRayTraceResult hit) {
-        if (world == null || hit == null || !atOrOlderThan1_12_2()) {
+    private static BlockRayTraceResult adjustBlockHit(World world, BlockRayTraceResult hit) {
+        if (world == null || hit == null || !JelloPortal.getVersion().olderThanOrEqualTo(ProtocolVersion.v1_12_2)) {
             return hit;
         }
 
@@ -851,7 +825,7 @@ public class PlayerController
     }
 
     private static boolean extinguishFireBeforeBreak(World world, BlockPos pos) {
-        if (world == null || pos == null || !atOrOlderThan1_15_2()) {
+        if (world == null || pos == null || !JelloPortal.getVersion().olderThanOrEqualTo(ProtocolVersion.v1_15_2)) {
             return false;
         }
 
@@ -864,7 +838,7 @@ public class PlayerController
     }
 
     private static ActionResultType legacyPlacementResult(ActionResultType result, ItemStack stack, int originalCount) {
-        if (!atOrOlderThan1_12_2()) {
+        if (!JelloPortal.getVersion().olderThanOrEqualTo(ProtocolVersion.v1_12_2)) {
             return result;
         }
 
@@ -880,7 +854,7 @@ public class PlayerController
     }
 
     public static boolean isInventoryActionSupported(int slotId, int mouseButton, ClickType type) {
-        if (!legacyCombat()) {
+        if (!JelloPortal.getVersion().olderThanOrEqualTo(ProtocolVersion.v1_8)) {
             return true;
         }
 
