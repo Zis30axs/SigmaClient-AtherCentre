@@ -80,7 +80,7 @@ public class BrewingStandContainer extends Container
 
             if ((index < 0 || index > 2) && index != 3 && index != 4)
             {
-                if (supportsBrewingFuelSlot()
+                if (JelloPortal.getVersion().newerThan(ProtocolVersion.v1_8)
                         && BrewingStandContainer.FuelSlot.isValidBrewingFuel(itemstack))
                 {
                     if (this.mergeItemStack(itemstack1, 4, 5, false) || this.slot.isItemValid(itemstack1) && !this.mergeItemStack(itemstack1, 3, 4, false))
@@ -170,7 +170,7 @@ public class BrewingStandContainer extends Container
 
         public boolean isItemValid(ItemStack stack)
         {
-            return supportsBrewingFuelSlot() && isValidBrewingFuel(stack);
+            return JelloPortal.getVersion().newerThan(ProtocolVersion.v1_8) && isValidBrewingFuel(stack);
         }
 
         public static boolean isValidBrewingFuel(ItemStack itemStackIn)
@@ -185,14 +185,8 @@ public class BrewingStandContainer extends Container
 
         public boolean isEnabled()
         {
-            return supportsBrewingFuelSlot();
+            return JelloPortal.getVersion().newerThan(ProtocolVersion.v1_8);
         }
-    }
-
-    /** 1.9+ is the first version with the brewing-stand fuel slot. */
-    private static boolean supportsBrewingFuelSlot() {
-        ProtocolVersion target = JelloPortal.getVersion();
-        return target != null && target.newerThan(ProtocolVersion.v1_8);
     }
 
     static class IngredientSlot extends Slot

@@ -703,26 +703,6 @@ public class NetworkManager extends SimpleChannelInboundHandler<IPacket<?>> {
     private static volatile long lastSequenceDebugNanos;
 
     /**
-     * Version gates for the interaction adapter. All reduce to the Via target
-     * version; {@code null} (no Via target) falls back to the native path.
-     */
-    private static boolean atOrOlderThan1_8() {
-        ProtocolVersion target = JelloPortal.getVersion();
-        return target != null && target.olderThanOrEqualTo(ProtocolVersion.v1_8);
-    }
-
-    private static boolean supportsPickItemPacket() {
-        return !atOrOlderThan1_8();
-    }
-
-    private static boolean between1_19And1_21_1() {
-        ProtocolVersion target = JelloPortal.getVersion();
-        return target != null
-                && target.newerThanOrEqualTo(ProtocolVersion.v1_19)
-                && target.olderThan(ProtocolVersion.v1_21_2);
-    }
-
-    /**
      * Handles the serverbound interaction packets that must bypass the normal
      * 1.16.4 wire format for the active Via target.
      *
@@ -738,7 +718,10 @@ public class NetworkManager extends SimpleChannelInboundHandler<IPacket<?>> {
             return true;
         }
 
-        if (!between1_19And1_21_1()) {
+        ProtocolVersion target = JelloPortal.getVersion();
+        if (target == null
+                || !target.newerThanOrEqualTo(ProtocolVersion.v1_19)
+                || !target.olderThan(ProtocolVersion.v1_21_2)) {
             return false;
         }
 
@@ -776,7 +759,7 @@ public class NetworkManager extends SimpleChannelInboundHandler<IPacket<?>> {
     }
 
     private boolean rememberLocalUse(IPacket<?> packet) {
-        if (!atOrOlderThan1_8()) {
+        if (!JelloPortal.getVersion().olderThanOrEqualTo(ProtocolVersion.v1_8)) {
             return true;
         }
 
@@ -803,12 +786,12 @@ public class NetworkManager extends SimpleChannelInboundHandler<IPacket<?>> {
         }
 
         if (packet instanceof CPlayerDiggingPacket diggingPacket) {
-            return atOrOlderThan1_8()
+            return JelloPortal.getVersion().olderThanOrEqualTo(ProtocolVersion.v1_8)
                     && diggingPacket.getAction() == CPlayerDiggingPacket.Action.SWAP_ITEM_WITH_OFFHAND;
         }
 
         if (packet instanceof CPickItemPacket) {
-            return !supportsPickItemPacket();
+            return JelloPortal.getVersion().olderThanOrEqualTo(ProtocolVersion.v1_8);
         }
 
         if (packet instanceof CClickWindowPacket clickWindowPacket) {

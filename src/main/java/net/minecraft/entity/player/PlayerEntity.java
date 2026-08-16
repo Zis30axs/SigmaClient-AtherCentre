@@ -2194,17 +2194,8 @@ public abstract class PlayerEntity extends LivingEntity {
         this.dataManager.set(RIGHT_SHOULDER_ENTITY, tag);
     }
 
-    /**
-     * 1.9+ uses the attack cooldown and item cooldowns; only 1.8 targets run
-     * the instant legacy combat without them.
-     */
-    private static boolean usesAttackAndItemCooldowns() {
-        ProtocolVersion target = JelloPortal.getVersion();
-        return target == null || target.newerThan(ProtocolVersion.v1_8);
-    }
-
     public float getCooldownPeriod() {
-        if (!usesAttackAndItemCooldowns()) {
+        if (JelloPortal.getVersion().olderThanOrEqualTo(ProtocolVersion.v1_8)) {
             return 1.0F;
         }
 
@@ -2215,7 +2206,7 @@ public abstract class PlayerEntity extends LivingEntity {
      * Returns the percentage of attack power available based on the cooldown (zero to one).
      */
     public float getCooledAttackStrength(float adjustTicks) {
-        if (!usesAttackAndItemCooldowns()) {
+        if (JelloPortal.getVersion().olderThanOrEqualTo(ProtocolVersion.v1_8)) {
             return 1.0F;
         }
 
@@ -2223,7 +2214,7 @@ public abstract class PlayerEntity extends LivingEntity {
     }
 
     public void resetCooldown() {
-        if (!usesAttackAndItemCooldowns()) {
+        if (JelloPortal.getVersion().olderThanOrEqualTo(ProtocolVersion.v1_8)) {
             return;
         }
 

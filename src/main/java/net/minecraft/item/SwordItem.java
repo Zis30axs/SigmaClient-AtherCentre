@@ -49,7 +49,7 @@ public class SwordItem extends TieredItem implements IVanishable
      */
     public ActionResult<ItemStack> onItemRightClick(World worldIn, PlayerEntity playerIn, Hand handIn)
     {
-        if (isLegacyCombatTarget() && this.isLegacyBlockingSword())
+        if (JelloPortal.getVersion().olderThanOrEqualTo(ProtocolVersion.v1_8) && this.isLegacyBlockingSword())
         {
             ItemStack itemstack = playerIn.getHeldItem(handIn);
             playerIn.setActiveHand(handIn);
@@ -61,22 +61,16 @@ public class SwordItem extends TieredItem implements IVanishable
 
     public UseAction getUseAction(ItemStack stack)
     {
-        return isLegacyCombatTarget() && this.isLegacyBlockingSword()
+        return JelloPortal.getVersion().olderThanOrEqualTo(ProtocolVersion.v1_8) && this.isLegacyBlockingSword()
                 ? UseAction.BLOCK
                 : super.getUseAction(stack);
     }
 
     public int getUseDuration(ItemStack stack)
     {
-        return isLegacyCombatTarget() && this.isLegacyBlockingSword()
+        return JelloPortal.getVersion().olderThanOrEqualTo(ProtocolVersion.v1_8) && this.isLegacyBlockingSword()
                 ? 72000
                 : super.getUseDuration(stack);
-    }
-
-    /** 1.8 is the only target with the legacy continuous sword-block lifecycle. */
-    private static boolean isLegacyCombatTarget() {
-        ProtocolVersion target = JelloPortal.getVersion();
-        return target != null && target.olderThanOrEqualTo(ProtocolVersion.v1_8);
     }
 
     /**
